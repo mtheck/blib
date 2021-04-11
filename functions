@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-[[ $__functions__ ]] && exit
+[[ $__functions__ ]] && return
 
 _error_ () { echo 0; }
 _warn_  () { echo 1; }
@@ -451,6 +451,52 @@ function parse_duration {
     done
 
     echo $seconds
+}
+
+function _trim {
+    local side=$1 str=$2 chars=$3
+
+	[[ $# -gt 2 ]] || chars=$IFS
+
+	[[ $chars ]] || echo "$str"
+
+	local i len
+
+	if [[ ! $side || $side == - ]]; then
+		len=${#str}
+		for ((i=0; i<len; i++)); do
+			[[ $chars == *"${str:i:1}"* ]] || break
+		done
+		str=${str:i}
+	fi
+
+	if [[ ! $side || $side == + ]]; then
+		len=${#str}
+		for ((i=len; i>0; i--)); do
+			[[ $chars == *"${str:i-1:1}"* ]] || break
+		done
+		str=${str:0:i}
+	fi
+
+    echo "$str"
+}
+
+function trim {
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+    _trim '' "$@"
+}
+
+function triml {
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+    _trim - "$@"
+}
+
+function trimr {
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+    _trim + "$@"
 }
 
 function add_list {
