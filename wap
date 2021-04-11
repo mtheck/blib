@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -e
+
+. functions
+
+function usage {
+    cat <<END
+Filter a file through a (successful) command.
+
+Usage:
+  $0 [<options>] <file> <command> [<arg> ...]
+
+Options:
+  --help, -h
+    Display this help
+END
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--help | -h)
+    usage
+    ;;
+--)
+    shift
+    break
+    ;;
+-*)
+    error "Unknown option: $1"
+    ;;
+*)
+    break
+    ;;
+esac
+done
+
+file=$1
+shift || usage
+
+[[ $# -gt 0 ]] || usage
+
+[[ -e $file ]] || error "Target file not found"
+[[ -f $file ]] || error "Target file not regular"
+[[ -w $file ]] || error "Target file not writable"
+
+tmp_file; tmp=$TMP_FILE
+
+run "$@" < "$file" > "$tmp"
+
+cp "$tmp" "$file"

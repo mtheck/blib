@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -e
+
+. functions
+
+function usage {
+    cat <<END
+Run a command sending standard output to less using intermediate temporary file.
+
+Usage:
+  $0 [<options>] <command> [<arg> ...]
+
+Options:
+  --help, -h
+    Display this help
+END
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--help | -h)
+    usage
+    ;;
+--)
+    shift
+    break
+    ;;
+-*)
+    error "Unknown option: $1"
+    ;;
+*)
+    break
+    ;;
+esac
+done
+
+[[ $# -gt 0 ]] || usage
+
+tmp_file; tf=$TMP_FILE
+
+run "$@" > "$tf"
+
+less -- "$tf"

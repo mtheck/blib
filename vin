@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+set -e
+
+. functions
+
+function usage {
+    cat <<END
+View standard input.
+
+Usage:
+  $0 [<options>]
+
+Options:
+  --help, -h
+    Display this help
+END
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--help | -h)
+    usage
+    ;;
+--)
+    shift
+    break
+    ;;
+-*)
+    error "Unknown option: $1"
+    ;;
+*)
+    break
+    ;;
+esac
+done
+
+[[ $# -eq 0 ]] || usage
+
+exec view --not-a-term -
