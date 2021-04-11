@@ -1,0 +1,704 @@
+#!/usr/bin/env bash
+
+[[ $__functions__ ]] && exit
+
+_error_ () { echo 0; }
+_warn_  () { echo 1; }
+_note_  () { echo 2; }
+_msg_   () { echo 3; }
+_debug_ () { echo 4; }
+_trace_ () { echo 5; }
+
+_error () { log -0; }
+_warn  () { log -1; }
+_note  () { log -2; }
+_msg   () { log -3; }
+_debug () { log -4; }
+_trace () { log -5; }
+
+error () { log 0 "$@"; exit 1; }
+warn  () { log 1 "$@"; }
+note  () { log 2 "$@"; }
+msg   () { log 3 "$@"; }
+debug () { log 4 "$@"; }
+trace () { log 5 "$@"; }
+
+function errorf {
+	[[ $# -gt 0 ]] || set "Invalid arguments"
+
+	( error "${BASH_SOURCE[2]}[${BASH_LINENO[1]}] ${FUNCNAME[1]}:" "$@" ) || :
+
+	echo 2
+}
+
+function is_declared {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+    local attrs=$(declare -p "$1" 2>/dev/null | awk -v RS= '{print $2}')
+    shift
+
+    [[ $attrs ]] || return 1
+    [[ $# -gt 0 ]] || return 0
+
+    attrs=${attrs##*-}
+
+    local i t_attrs
+    for t_attrs in "$@"; do
+	    for ((i=0; i<${#t_attrs}; i++)); do
+	    	[[ $attrs != *${t_attrs:i:1}* ]] && continue 2
+		done
+		return 0
+	done
+    return 1
+}
+
+function is_string {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	! is_declared "$1" i a A
+}
+
+function is_integer {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	is_declared "$1" i
+}
+
+function is_array {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	is_declared "$1" a
+}
+
+function is_hash {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	is_declared "$1" A
+}
+
+function bool {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	case $1 in
+    true | TRUE | True | \
+    yes | YES | Yes | \
+    on | ON | On | \
+    1)
+	return 0
+	;;
+    false | FALSE | False | \
+    no | NO | No | \
+    off | OFF | Off | \
+    0)
+	return 1
+	;;
+	esac
+	return 3
+}
+
+
+function quote {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+    echo "'${1//\'/\'\\\'\'}'"
+}
+
+function color {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	colorc "$1" && echo -n "$COLORC"
+}
+
+function colorc {
+	local - && set +x
+
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local -A cc=(
+		[none]=0
+		[black]=30
+		[red]=31
+		[green]=32
+		[yellow]=33
+		[blue]=34
+		[magenta]=35
+		[cyan]=36
+		[white]=37
+	)
+	local -A sc=(
+		[+]=1
+		[-]=2
+		[/]=3
+		[=]=4
+		[%]=7
+	)
+
+	unset COLORC
+
+	local i code list elem name fmt num
+
+	list=$1
+
+	while [[ $list ]]; do
+		elem=${list%%,*}
+		list=${list:${#elem}}
+
+		name=${elem%%[![:word:]]*}
+		fmt=${elem:${#name}}
+
+		if [[ $name ]]; then
+			num=${cc[$name]}
+
+			if [[ $num ]]; then
+				[[ $list ]] && ((num+=10))
+				[[ $code ]] && code+=\;
+				code+=$num
+			else
+				code=
+				break
+			fi
+		fi
+
+		for ((i=0; i<${#fmt}; i++)); do
+			num=${sc[${fmt:i:1}]}
+
+			if [[ $num ]]; then
+				code+=\;$num
+			else
+				code=
+				break 2
+			fi
+		done
+
+		list=${list#,}
+	done
+
+	[[ $code ]] || return
+
+	COLORC=$'\e'[${code}m
+}
+
+function echoc {
+	local - && set +x
+
+	local nl
+	[[ $1 == -n ]] && nl=$1 && shift
+
+	local color base code sep=${IFS:0:1}
+
+	if [[ $ECHOC ]]; then
+		bool $ECHOC && color=color
+	else
+		[[ -t 1 ]] && color=color
+	fi
+
+	if [[ $ECHOC_BASE ]] && colorc "$ECHOC_BASE"; then
+		base="$COLORC"
+	fi
+
+	local out space spec
+
+	while [[ $# -gt 0 ]]; do
+		spec=${1#@}
+
+		if [[ ${1:0:1} == @ ]] && colorc "${spec%@}"; then
+			code="$COLORC"
+			[[ ${1: -1} == @ ]] && space=_ || space=
+		else
+			if [[ ! $out ]]; then
+				[[ $base && $color ]] && out+=$base
+			else
+				[[ $space ]] && out+=$sep
+			fi
+
+			if [[ $code ]]; then
+				[[ $color ]] && out+=$code
+			fi
+
+			out+=$1
+
+			if [[ $code ]]; then
+				if [[ $color ]]; then
+					out+=$'\e'[0m
+					[[ $base ]] && out+=$base
+				fi
+				code=
+			fi
+
+			space=_
+		fi
+
+		shift
+	done
+
+	[[ $base && $color ]] && out+=$'\e'[0m
+
+	echo $nl "$out"
+}
+
+function echoe {
+	echoc "$@" >&2
+}
+
+function log {
+	local - && set +x
+
+	[[ $# -ge 1 ]] || return $(errorf)
+
+	local level=$1 && shift
+
+	valid_int "$level" || return $(errorf "Invalid log level")
+
+	local levels=(
+		Error:red
+		Warning:yellow
+		Note:green
+		:cyan
+		DEBUG:
+		TRACE:
+	)
+
+	local test drop
+
+	if [[ $level == -* ]] ; then
+		test=test
+		level=${level##*-}
+	fi
+
+	local level_def=${levels[$level]} log_level=${LOG_LEVEL}
+
+	[[ $level_def ]] || return $(errorf "Unknown log level")
+
+	if [[ $log_level == _ ]]; then
+		drop=drop
+	else
+		valid_uint "$log_level" || log_level=3
+
+		[[ $log_level -lt $level ]] && drop=drop
+	fi
+
+    if [[ $test ]]; then
+    	[[ $drop ]] && return 1
+    	return 0
+    fi
+    [[ $drop ]] && return 0
+
+	local header=${level_def%%:*} color=${level_def##*:}
+
+	[[ $color ]] || color=none
+
+	local header_color=$color sep_color=$color
+
+	if [[ $color != none ]]; then
+		header_color+=+=
+		sep_color+=+
+	fi
+
+	local log_prefix_opt log_prefix=$LOG_PREFIX
+
+	if [[ $log_prefix == [+-]* ]]; then
+		log_prefix_opt=${log_prefix:0:1}
+		log_prefix=${log_prefix#?}
+	fi
+	if [[ $log_prefix == _ ]]; then
+		log_prefix=
+	elif [[ ! $log_prefix ]]; then
+		log_prefix='>>>'
+	fi
+
+	local prefix=$log_prefix prefix_args=() header_args=()
+
+	[[ -t 2 && $log_prefix_opt != + ]] && prefix=
+
+	if [[ $header ]]; then
+		header_args+=(@$header_color "$header")
+		header_args+=(@$sep_color ': ')
+
+		if [[ $header == ${header^^} ]]; then
+			[[ $log_prefix_opt != - ]] && prefix=$log_prefix
+		fi
+	fi
+
+	if [[ $prefix ]]; then
+		prefix_args+=("$prefix")
+	fi
+
+	if bool "$LOG_DATE" || [[ ! $LOG_DATE && $log_level -ge 4 ]]; then
+		if [[ $LOG_DATE_FORMAT ]]; then
+			prefix_args+=("[$(date +"$LOG_DATE_FORMAT")]")
+		else
+			prefix_args+=("[$(date -In)]")
+		fi
+	fi
+
+	if bool "$LOG_SOURCE" || [[ ! $LOG_SOURCE && $log_level -ge 5 ]]; then
+		local -i depth=0
+		[[ ${BASH_SOURCE[depth]} == "${BASH_SOURCE[depth+1]}" ]] && depth+=1
+
+		prefix_args+=("{${BASH_SOURCE[depth+1]}:${BASH_LINENO[depth]}}")
+	fi
+
+	[[ ${#prefix_args[@]} -gt 0 ]] && prefix_args=("${prefix_args[*]}${IFS:0:1}")
+
+	echoe -n "${prefix_args[@]}" "${header_args[@]}"
+	ECHOC_BASE=$color echoe "$@"
+}
+
+function ask {
+	local question=$1 && shift || :
+
+	[[ $question ]] || question=?
+
+	local -A answer
+	local a
+	for a in "$@"; do
+		answer[$a]=_
+	done
+
+	local choices
+	[[ $# -gt 0 ]] && choices=" ($(IFS=\|; echo "$*"))"
+
+    local reply
+    while :; do
+        echoe -n @yellow+ "$question$choices: "
+        read reply
+
+    	[[ $# -gt 0 ]] || break
+        [[ ${answer[$reply]} ]] && break
+    done
+    echo "$reply"
+}
+
+function confirm {
+	[[ $# -eq 0 ]] || return $(errorf)
+
+	[[ $(ask "Are you sure you want to continue?" y n) == y ]]
+}
+
+function valid_name {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	[[ $1 =~ ^[[:alpha:]_]([[:alnum:]_]*)?$ ]]
+}
+
+function valid_identifier {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	[[ $1 =~ ^[[:alpha:]]([[:alnum:]-]*[[:alnum:]])?$ ]]
+}
+
+function valid_int {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	[[ $1 =~ ^[-+]?[[:digit:]]+$ ]]
+}
+
+function valid_uint {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	valid_int "$1" && [[ ${1:0:1} != - ]]
+}
+
+function valid_float {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	[[ $1 =~ ^[-+]?[[:digit:]]*\.?[[:digit:]]+([eE][[:digit:]]+)?$ ]]
+}
+
+function valid_ufloat {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	valid_float "$1" && [[ ${1:0:1} != - ]]
+}
+
+function valid_bool {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	bool "$1" || [[ $? -ne 3 ]]
+}
+
+function parse_duration {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local duration=$1
+
+    local -A units=(
+        [s]=1
+        [m]=60
+        [h]=3600
+    )
+
+    local -i seconds=0
+
+    local num unit factor
+
+    while [[ $duration ]]; do
+    	num=${duration%%[!0-9]*}
+
+    	[[ $num ]] || return 1
+
+    	duration=${duration:${#num}}
+    	unit=${duration%%[0-9]*}
+
+    	[[ $unit ]] || unit=s
+
+    	duration=${duration:${#unit}}
+		factor=${units[$unit]}
+
+    	[[ $factor ]] || return 1
+
+    	((seconds+=num*factor))
+    done
+
+    echo $seconds
+}
+
+function add_list {
+	# array=$1 list=$2 [delim=$3]
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
+
+	valid_name "$1" || return $(errorf "Illegal variable name: $1")
+
+	! is_declared "$1" || is_array "$1" || return $(errorf "Variable is not an array: $1")
+
+	readarray -O "$(eval "echo \${#$1[@]}")" -d "$([[ $# -gt 2 ]] && echo "$3" || echo ,)" -t "$1" < <(echo -n "$2")
+}
+
+function list_contains {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+    local elem=$1 && shift
+
+    local e
+    for e in "$@"; do
+        [[ $e == "$elem" ]] && return 0
+    done
+    return 1
+}
+
+function list_selects {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+	[[ $# -gt 1 ]] || return 0
+
+    list_contains "$@"
+}
+
+function tmp_file {
+	[[ $# -le 1 ]] || return $(errorf)
+
+	local tmpdir_arg=--tmpdir
+	if [[ $# -ge 1 ]]; then
+		[[ -d $1 ]] || return $(errorf "Invalid target directory: $1")
+		tmpdir_arg+==$1
+	fi
+
+	TMP_FILE=$(mktemp "$tmpdir_arg" --suffix .tmp tmp_$(uuidgen)_XXXXXXXX)
+
+	_trace && trace "Temporary file: $TMP_FILE"
+
+	exit_hook rm -f "$TMP_FILE"
+}
+
+function tmp_dir {
+	[[ $# -le 1 ]] || return $(errorf)
+
+	local tmpdir_arg=--tmpdir
+	if [[ $# -ge 1 ]]; then
+		[[ -d $1 ]] || return $(errorf "Invalid target directory: $1")
+		tmpdir_arg+==$1
+	fi
+
+	TMP_DIR=$(mktemp "$tmpdir_arg" --directory tmp_$(uuidgen)_XXXXXXXX)
+
+	_trace && trace "Temporary directory: $TMP_DIR"
+
+	exit_hook rm -rf "$TMP_DIR"
+}
+
+function require_command {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local command=$1
+
+    command -v "$command" >/dev/null || error "Command required: $command"
+}
+
+function run {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+	if [[ $# -eq 1 && $IFS && $1 == *${IFS:0:1}* && $SHELL ]]; then
+		set -- "$SHELL" -c "$1"
+	fi
+
+	_trace && trace "Running: $@"
+
+	"$@"
+}
+
+function exec_job {
+	[[ $# -gt 0 ]] || return $(errorf)
+
+	set -m
+
+	"$@" &
+
+	local pid=$(jobs -p % 2>/dev/null)
+
+	[[ $pid ]] || return
+
+	_trace && trace "Running job process: $pid"
+
+	exit_hook kill_job $pid
+}
+
+function kill_job {
+	[[ $# -le 1 ]] || return $(errorf)
+
+    [[ $# -eq 0 ]] && set %
+
+    local pid spec
+
+    if valid_uint "$1"; then
+    	pid=$1
+
+    	local n pids=($(jobs -p))
+    	for ((n=1; n<=${#pids[@]}; n++)); do
+    		if [[ ${pids[n-1]} == $pid ]]; then
+    			spec=%$n
+    			break
+    		fi
+    	done
+	else
+		pid=$(jobs -p "$1" 2>/dev/null) && spec=$1
+	fi
+
+	if [[ ! $spec ]]; then
+		_trace && trace "Job process not found: $1"
+		return 0
+	fi
+
+	_trace && trace "Killing job process: $pid"
+
+	kill "$spec" 2>/dev/null
+	wait -f "$spec" 2>/dev/null
+}
+
+function coproc_exec {
+	[[ $# -gt 1 ]] || return $(errorf)
+
+	local name=$1 && shift
+
+    valid_name "$name" || return $(errorf "Invalid coprocess name")
+
+    declare -g -A _coproc
+
+    [[ ${_coproc[$name]} ]] && return
+
+	set -m
+
+	coproc "$@"
+
+	_coproc[$name]=$COPROC_PID
+	_coproc[$name:0]=${COPROC[0]}
+	_coproc[$name:1]=${COPROC[1]}
+
+	_trace && trace "Running coprocess: $name ($COPROC_PID)"
+
+	exit_hook coproc_kill $name
+}
+
+function coproc_kill {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local name=$1
+
+    valid_name "$name" || return $(errorf "Invalid coprocess name")
+
+	local pid=${_coproc[$name]}	
+
+    [[ $pid ]] || return $(errorf "Unknown coprocess")
+
+	unset _coproc[$name] _coproc[$name:0] _coproc[$name:1]
+
+    kill_job $pid
+}
+
+function coproc_write {
+	[[ $# -gt 1 ]] || return $(errorf)
+
+	local fd=${_coproc[$1:1]} && shift
+
+    [[ $fd ]] || return $(errorf "Unknown coprocess")
+
+    if [[ $# -eq 0 ]]; then
+    	cat >&$fd
+    	return
+    fi
+
+    while [[ $# -gt 0 ]]; do
+    	echo -n "$1" >&$fd
+    	shift
+    done
+}
+
+function coproc_read_line {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local fd=${_coproc[$1:0]} && shift
+
+    [[ $fd ]] || return $(errorf "Unknown coprocess")
+
+    IFS= read -r COPROC_DATA <&$fd || return $(errorf "Failed reading line")
+}
+
+function coproc_read_field {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local fd=${_coproc[$1:0]} && shift
+
+    [[ $fd ]] || return $(errorf "Unknown coprocess")
+
+    local size end
+
+    IFS= read -r size <&$fd || return $(errorf "Failed reading field size")
+
+    valid_uint "$size" || return $(errorf "Invalid field size read: $size")
+
+    IFS= read -r -d '' -n "$size" COPROC_DATA <&$fd || return $(errorf "Failed reading field value")
+
+    IFS= read -r end <&$fd || return $(errorf "Failed reading field end")
+
+    [[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
+}
+
+function exit_hook {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+    declare -g -a _exit_hook_p _exit_hook_s _exit_hook_c
+
+    _exit_hook_p+=($BASHPID)
+    _exit_hook_s+=(${#@})
+    _exit_hook_c+=("$@")
+
+    trap _exit_hook EXIT
+}
+
+function _exit_hook {
+	local len
+    while [[ ${#_exit_hook_s[@]} -gt 0 ]]; do
+    	[[ ${_exit_hook_p[-1]} == $BASHPID ]] || break
+
+    	_trace && trace "Exit hook #${#_exit_hook_s[@]}"
+
+        len=${_exit_hook_s[-1]}
+
+        run "${_exit_hook_c[@]: -len}" || :
+
+        _exit_hook_c=("${_exit_hook_c[@]:0:${#_exit_hook_c[@]}-len}")
+        unset _exit_hook_s[-1]
+        unset _exit_hook_p[-1]
+    done
+}
+
+__functions__=_

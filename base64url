@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -e -o pipefail
+
+TR_SET1=-/_+
+TR_SET2=+_/-
+
+flags=()
+files=()
+
+decode=
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--decode | -d)
+    decode=decode
+    ;;
+--help | --version)
+    exec base64 $1
+    ;;
+--)
+    shift
+    break
+    ;;
+-?*)
+    ;;
+*)
+    files+=("$1")
+    shift
+    continue
+    ;;
+esac
+flags+=("$1")
+shift
+done
+
+files+=("$@")
+[[ ${#files[@]} -gt 0 ]] || files=(-)
+
+file=${files[-1]}
+files[-1]=-
+
+if [[ $decode ]]; then
+    cat -- "$file" | tr -- "$TR_SET1" "$TR_SET2" | base64 "${flags[@]}" -- "${files[@]}"
+else
+    cat -- "$file" | base64 "${flags[@]}" -- "${files[@]}" | tr -- "$TR_SET1" "$TR_SET2"
+fi

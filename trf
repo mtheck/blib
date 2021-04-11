@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -e
+
+. functions
+
+function usage {
+    cat <<END
+Remove line feed (dos -> unix) from files.
+
+Usage:
+  $0 [<options>] <file> ...
+
+Options:
+  --help, -h
+    Display this help
+END
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--help | -h)
+    usage
+    ;;
+--)
+    shift
+    break
+    ;;
+-*)
+    error "Unknown option: $1"
+    ;;
+*)
+    break
+    ;;
+esac
+done
+
+[[ $# -gt 0 ]] || usage
+
+while [[ $# -gt 0 ]]; do
+	[[ -f $1 ]] || error "Not a file: $1"
+
+	wap -- "$1" tr -d '\r'
+	shift
+done
