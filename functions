@@ -522,15 +522,180 @@ function _trim {
     echo "$str"
 }
 
-function add_list {
-	# array=$1 list=$2 [delim=$3]
+function array_push {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
-	valid_name "$1" || return $(errorf "Illegal variable name: $1")
+	valid_name "$1" || return $(errorf "Illegal variable name")
 
-	! is_declared "$1" || is_array "$1" || return $(errorf "Variable is not an array: $1")
+	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
 
-	readarray -O "$(eval "echo \${#$1[@]}")" -d "$([[ $# -gt 2 ]] && echo "$3" || echo ,)" -t "$1" < <(echo -n "$2")
+	local __v_name=$1 __v_list=$2 __v_delim=,
+
+	is_array "$__v_name" || ! is_declared "$__v_name" || return $(errorf "Variable is not an array")
+
+	if [[ $# -gt 2 ]]; then
+		__v_delim=$3
+
+		[[ ${#__v_delim} -le 1 ]] || return $(errorf "List delimiter must be a single character")
+	fi
+
+	readarray -O "$(eval "echo \${#$__v_name[@]}")" -d "$__v_delim" -t "$__v_name" < <(echo -n "$2")
+}
+
+function array_split {
+	[[ $# -eq 3 ]] || return $(errorf)
+
+	valid_name "$1" || return $(errorf "Illegal variable name")
+
+	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
+
+	local __v_name=$1 __v_str=$2 __v_regex=$3
+
+	is_array "$__v_name" || ! is_declared "$__v_name" || return $(errorf "Variable is not an array")
+
+	local __v_len __v_res=()
+
+	while :; do
+		if [[ $__v_str =~ ($__v_regex).* ]]; then
+			[[ ${BASH_REMATCH[1]} ]] || return $(errorf "Empty separator regular expression")
+
+			__v_res+=("${__v_str:0:-${#BASH_REMATCH[0]}}")
+			__v_str=${__v_str:${#__v_str}-${#BASH_REMATCH[0]}+${#BASH_REMATCH[1]}}
+		else
+			[[ $? -eq 1 ]] || return $(errorf "Invalid separator regular expression")
+
+			__v_res+=("$__v_str")
+			__v_str=
+		fi
+
+		[[ $__v_str ]] || break
+	done
+
+    eval "$__v_name=(\"\${__v_res[@]}\")"
+}
+
+function array_filter {
+	[[ $# -ge 3 ]] || return $(errorf)
+
+	valid_name "$1" || return $(errorf "Illegal variable name")
+
+	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
+
+	local __v_name=$1 __v_op=$2 __v_type=_ __v_filter=$3 && shift 3
+
+	is_array "$__v_name" || return $(errorf "Variable is not an array")
+
+	if [[ ${#__v_op} -gt 1 ]]; then
+		__v_type=${__v_op:1}
+
+		[[ $__v_type == [_=~@] ]] || return $(errorf "Invalid filter operator")
+
+		if [[ $__v_type == '@' ]]; then
+			is_exec "$__v_filter" || return $(errorf "Filter command not defined")
+		else
+			[[ $# -eq 0 ]] || return $(errorf)
+		fi
+
+		__v_op=${__v_op:0:1}
+	fi
+
+	[[ $__v_op == [-+] ]] || return $(errorf "Invalid filter operator")
+
+	local __v_len="$(eval "echo \${#$__v_name[@]}")" __v_res=()
+
+	local __v_idx __v_val __v_match __v_found __v_arg __v_args=()
+
+    for ((__v_idx=0; __v_idx<$__v_len; __v_idx++)); do
+		__v_val=$(eval "echo \"\${$__v_name[$__v_idx]}\"")
+		__v_match=
+
+		case $__v_type in
+		'_')
+			if [[ $__v_val == "$__v_filter" ]]; then
+				__v_match=_
+			fi
+			;;
+		'=')
+			if [[ $__v_val == $__v_filter ]]; then
+				__v_match=_
+			fi
+			;;
+		'~')
+			if [[ $__v_val =~ $__v_filter ]]; then
+				__v_match=_
+			else
+				[[ $? -eq 1 ]] || return $(errorf "Invalid filter regular expression")
+			fi
+			;;
+		'@')
+			__v_args=()
+			__v_found=
+
+			for __v_arg in "$@"; do
+			    if [[ $__v_arg == *{}* ]]; then
+			        __v_arg=${__v_arg//\{\}/"$__v_val"}
+			        __v_found=_
+			    fi
+			    __v_args+=("$__v_arg")
+			done
+			[[ $__v_found ]] || __v_args+=("$__v_val")
+
+			if $__v_filter "${__v_args[@]}" >/dev/null; then
+				__v_match=_
+			fi
+			;;
+		esac
+
+		if [[ $__v_match ]]; then
+			[[ $__v_op == - ]] && continue
+		else
+			[[ $__v_op == + ]] && continue
+		fi
+
+        __v_res+=("$__v_val")
+    done
+
+    eval "$__v_name=(\"\${__v_res[@]}\")"
+}
+
+function array_map {
+	[[ $# -ge 2 ]] || return $(errorf)
+
+	valid_name "$1" || return $(errorf "Illegal variable name")
+
+	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
+
+	local __v_name=$1 __v_fct=$2 && shift 2
+
+	is_array "$__v_name" || return $(errorf "Variable is not an array")
+
+	is_exec "$__v_fct" || return $(errorf "Map command not defined")
+
+	local __v_len="$(eval "echo \${#$__v_name[@]}")" __v_res=()
+
+	local __v_idx __v_val __v_found __v_arg __v_args=()
+
+    for ((__v_idx=0; __v_idx<$__v_len; __v_idx++)); do
+		__v_val=$(eval "echo \"\${$__v_name[$__v_idx]}\"")
+
+		__v_args=()
+		__v_found=
+
+		for __v_arg in "$@"; do
+		    if [[ $__v_arg == *{}* ]]; then
+		        __v_arg=${__v_arg//\{\}/"$__v_val"}
+		        __v_found=_
+		    fi
+		    __v_args+=("$__v_arg")
+		done
+		[[ $__v_found ]] || __v_args+=("$__v_val")
+
+		__v_val=$($__v_fct "${__v_args[@]}") || return $?
+
+        __v_res+=("$__v_val")
+    done
+
+    eval "$__v_name=(\"\${__v_res[@]}\")"
 }
 
 function list_contains {
@@ -551,6 +716,20 @@ function list_selects {
 	[[ $# -gt 1 ]] || return 0
 
     list_contains "$@"
+}
+
+function list_join {
+	[[ $# -ge 1 ]] || return $(errorf)
+
+	local sep=$1 && shift
+
+	local res in
+    while [[ $# -gt 0 ]]; do
+		[[ $in ]] && res+=$sep || in=_
+		res+=$1
+		shift
+    done
+    echo "$res"
 }
 
 function tmp_file {
