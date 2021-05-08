@@ -49,13 +49,18 @@ function is_declared {
 		done
 		return 0
 	done
-    return 1
+    return 3
 }
 
 function is_string {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	! is_declared "$1" i a A
+	if is_declared "$1" i a A; then
+		return 1
+	elif [[ $? -eq 3 ]]; then
+		return 0
+	fi
+	return 1
 }
 
 function is_integer {
@@ -74,6 +79,24 @@ function is_hash {
 	[[ $# -eq 1 ]] || return $(errorf)
 
 	is_declared "$1" A
+}
+
+function is_function {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	declare -F "$1" >/dev/null
+}
+
+function is_command {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	[[ $(type -P "$1") ]]
+}
+
+function is_exec {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	is_command "$1" || is_function "$1" || [[ $(type -t "$1") == builtin ]]
 }
 
 function bool {
@@ -187,9 +210,9 @@ function echoc {
 	local color base code sep=${IFS:0:1}
 
 	if [[ $ECHOC ]]; then
-		bool $ECHOC && color=color
+		bool $ECHOC && color=_
 	else
-		[[ -t 1 ]] && color=color
+		[[ -t 1 ]] && color=_
 	fi
 
 	if [[ $ECHOC_BASE ]] && colorc "$ECHOC_BASE"; then
@@ -261,7 +284,7 @@ function log {
 	local test drop
 
 	if [[ $level == -* ]] ; then
-		test=test
+		test=_
 		level=${level##*-}
 	fi
 
@@ -270,11 +293,11 @@ function log {
 	[[ $level_def ]] || return $(errorf "Unknown log level")
 
 	if [[ $log_level == _ ]]; then
-		drop=drop
+		drop=_
 	else
 		valid_uint "$log_level" || log_level=3
 
-		[[ $log_level -lt $level ]] && drop=drop
+		[[ $log_level -lt $level ]] && drop=_
 	fi
 
     if [[ $test ]]; then
@@ -349,23 +372,23 @@ function ask {
 
 	[[ $question ]] || question=?
 
-	local -A answer
-	local a
-	for a in "$@"; do
-		answer[$a]=_
+	local -A answers
+	local answer choose reply
+
+	for answer in "$@"; do
+		answers[$answer]=_
 	done
 
-	local choices
-	[[ $# -gt 0 ]] && choices=" ($(IFS=\|; echo "$*"))"
+	[[ $# -gt 0 ]] && choose=" ($(IFS=\|; echo "$*"))"
 
-    local reply
     while :; do
-        echoe -n @yellow+ "$question$choices: "
+        echoe -n @yellow+ "$question$choose: "
         read reply
 
     	[[ $# -gt 0 ]] || break
-        [[ ${answer[$reply]} ]] && break
+        [[ ${answers[$reply]} ]] && break
     done
+
     echo "$reply"
 }
 
@@ -453,38 +476,10 @@ function parse_duration {
     echo $seconds
 }
 
-function _trim {
-    local side=$1 str=$2 chars=$3
-
-	[[ $# -gt 2 ]] || chars=$IFS
-
-	[[ $chars ]] || echo "$str"
-
-	local i len
-
-	if [[ ! $side || $side == - ]]; then
-		len=${#str}
-		for ((i=0; i<len; i++)); do
-			[[ $chars == *"${str:i:1}"* ]] || break
-		done
-		str=${str:i}
-	fi
-
-	if [[ ! $side || $side == + ]]; then
-		len=${#str}
-		for ((i=len; i>0; i--)); do
-			[[ $chars == *"${str:i-1:1}"* ]] || break
-		done
-		str=${str:0:i}
-	fi
-
-    echo "$str"
-}
-
 function trim {
 	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
 
-    _trim '' "$@"
+    _trim _ "$@"
 }
 
 function triml {
@@ -497,6 +492,34 @@ function trimr {
 	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
 
     _trim + "$@"
+}
+
+function _trim {
+    local side=$1 str=$2 chars=$3
+
+	[[ $# -gt 2 ]] || chars=$IFS
+
+	[[ $chars ]] || echo "$str"
+
+	local i len
+
+	if [[ $side == - || $side == _ ]]; then
+		len=${#str}
+		for ((i=0; i<len; i++)); do
+			[[ $chars == *"${str:i:1}"* ]] || break
+		done
+		str=${str:i}
+	fi
+
+	if [[ $side == + || $side == _ ]]; then
+		len=${#str}
+		for ((i=len; i>0; i--)); do
+			[[ $chars == *"${str:i-1:1}"* ]] || break
+		done
+		str=${str:0:i}
+	fi
+
+    echo "$str"
 }
 
 function add_list {
@@ -565,9 +588,7 @@ function tmp_dir {
 function require_command {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	local command=$1
-
-    command -v "$command" >/dev/null || error "Command required: $command"
+    is_command "$1" || error "Command required: $1"
 }
 
 function run {
