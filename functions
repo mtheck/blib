@@ -376,6 +376,8 @@ function ask {
 	local answer choose reply
 
 	for answer in "$@"; do
+		[[ $answer ]] || continue
+
 		answers[$answer]=_
 	done
 
@@ -386,7 +388,7 @@ function ask {
         read reply
 
     	[[ $# -gt 0 ]] || break
-        [[ ${answers[$reply]} ]] && break
+        [[ $reply && ${answers[$reply]} ]] && break
     done
 
     echo "$reply"
