@@ -587,6 +587,7 @@ function array_filter {
 
 	if [[ ${#__v_op} -gt 1 ]]; then
 		__v_type=${__v_op:1}
+		__v_op=${__v_op:0:1}
 
 		[[ $__v_type == [_=~@] ]] || return $(errorf "Invalid filter operator")
 
@@ -595,8 +596,6 @@ function array_filter {
 		else
 			[[ $# -eq 0 ]] || return $(errorf)
 		fi
-
-		__v_op=${__v_op:0:1}
 	fi
 
 	[[ $__v_op == [-+] ]] || return $(errorf "Invalid filter operator")
