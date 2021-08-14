@@ -733,6 +733,19 @@ function list_join {
     echo "$res"
 }
 
+function file_split {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	FILE_PATH=$1
+	FILE_NAME=${FILE_PATH##*/}
+	FILE_DIR=${FILE_PATH:0:-${#FILE_NAME}}
+	while [[ ${FILE_DIR: -1} == / ]]; do
+		FILE_DIR=${FILE_DIR:0:-1}
+	done
+	FILE_BASE=${FILE_NAME%.*}
+	FILE_EXT=${FILE_NAME:${#FILE_BASE}+1}
+}
+
 function tmp_file {
 	[[ $# -le 1 ]] || return $(errorf)
 
