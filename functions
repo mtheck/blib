@@ -31,32 +31,41 @@ function errorf {
 	echo 2
 }
 
+function warnf {
+	[[ $# -gt 0 ]] || set "Unexpected arguments"
+
+	warn "${BASH_SOURCE[2]}[${BASH_LINENO[1]}] ${FUNCNAME[1]}:" "$@"
+}
+
 function is_declared {
 	[[ $# -ge 1 ]] || return $(errorf)
 
-    local attrs=$(declare -p "$1" 2>/dev/null | awk -v RS= '{print $2}')
-    shift
+	local attrs=$(declare -p "$1" 2>/dev/null)
+	shift
 
-    [[ $attrs ]] || return 1
-    [[ $# -gt 0 ]] || return 0
+	attrs=${attrs#* }
+	attrs=${attrs%% *}
 
-    attrs=${attrs##*-}
+	[[ $attrs ]] || return 1
+	[[ $# -gt 0 ]] || return 0
 
-    local i t_attrs
-    for t_attrs in "$@"; do
-	    for ((i=0; i<${#t_attrs}; i++)); do
-	    	[[ $attrs != *${t_attrs:i:1}* ]] && continue 2
+	attrs=${attrs##*-}
+
+	local i t_attrs
+	for t_attrs in "$@"; do
+		for ((i=0; i<${#t_attrs}; i++)); do
+			[[ $attrs != *${t_attrs:i:1}* ]] && continue 2
 		done
 		return 0
 	done
-    return 3
+	return 3
 }
 
 function is_string {
 	[[ $# -eq 1 ]] || return $(errorf)
 
 	if is_declared "$1" i a A; then
-		return 1
+		return 3
 	elif [[ $? -eq 3 ]]; then
 		return 0
 	fi
@@ -96,35 +105,29 @@ function is_command {
 function is_exec {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	is_command "$1" || is_function "$1" || [[ $(type -t "$1") == builtin ]]
+	is_function "$1" || is_command "$1" || [[ $(type -t "$1") == builtin ]]
 }
 
 function bool {
 	[[ $# -eq 1 ]] || return $(errorf)
 
 	case $1 in
-    true | TRUE | True | \
-    yes | YES | Yes | \
-    on | ON | On | \
-    1)
+	true | TRUE | True | \
+	yes | YES | Yes | \
+	on | ON | On | \
+	1)
 	return 0
 	;;
-    false | FALSE | False | \
-    no | NO | No | \
-    off | OFF | Off | \
-    0)
+	false | FALSE | False | \
+	no | NO | No | \
+	off | OFF | Off | \
+	0)
 	return 1
 	;;
 	esac
 	return 3
 }
 
-
-function quote {
-	[[ $# -eq 1 ]] || return $(errorf)
-
-    echo "'${1//\'/\'\\\'\'}'"
-}
 
 function color {
 	[[ $# -eq 1 ]] || return $(errorf)
@@ -300,11 +303,11 @@ function log {
 		[[ $log_level -lt $level ]] && drop=_
 	fi
 
-    if [[ $test ]]; then
-    	[[ $drop ]] && return 1
-    	return 0
-    fi
-    [[ $drop ]] && return 0
+	if [[ $test ]]; then
+		[[ $drop ]] && return 1
+		return 0
+	fi
+	[[ $drop ]] && return 0
 
 	local header=${level_def%%:*} color=${level_def##*:}
 
@@ -383,15 +386,15 @@ function ask {
 
 	[[ $# -gt 0 ]] && choose=" ($(IFS=\|; echo "$*"))"
 
-    while :; do
-        echoe -n @yellow+ "$question$choose: "
-        read reply
+	while :; do
+		echoe -n @yellow+ "$question$choose: "
+		read reply
 
-    	[[ $# -gt 0 ]] || break
-        [[ $reply && ${answers[$reply]} ]] && break
-    done
+		[[ $# -gt 0 ]] || break
+		[[ $reply && ${answers[$reply]} ]] && break
+	done
 
-    echo "$reply"
+	echo "$reply"
 }
 
 function confirm {
@@ -403,7 +406,7 @@ function confirm {
 function valid_name {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	[[ $1 =~ ^[[:alpha:]_]([[:alnum:]_]*)?$ ]]
+	[[ $1 =~ ^[[:alpha:]_][[:alnum:]_]*$ ]]
 }
 
 function valid_identifier {
@@ -442,273 +445,161 @@ function valid_bool {
 	bool "$1" || [[ $? -ne 3 ]]
 }
 
-function parse_duration {
+function parse_duration__ {
+	local _x_var=$1 && _var "$1" && shift || return
+
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	local duration=$1
+	local _x_duration=$1
 
-    local -A units=(
-        [s]=1
-        [m]=60
-        [h]=3600
-    )
+	local -A _x_units=(
+		[s]=1
+		[m]=60
+		[h]=3600
+	)
 
-    local -i seconds=0
+	local -i _x_seconds=0
 
-    local num unit factor
+	local _x_num _x_unit _x_factor
 
-    while [[ $duration ]]; do
-    	num=${duration%%[!0-9]*}
+	while [[ $_x_duration ]]; do
+		_x_num=${_x_duration%%[!0-9]*}
 
-    	[[ $num ]] || return 1
+		[[ $_x_num ]] || return 1
 
-    	duration=${duration:${#num}}
-    	unit=${duration%%[0-9]*}
+		_x_duration=${_x_duration:${#_x_num}}
+		_x_unit=${_x_duration%%[0-9]*}
 
-    	[[ $unit ]] || unit=s
+		[[ $_x_unit ]] || _x_unit=s
 
-    	duration=${duration:${#unit}}
-		factor=${units[$unit]}
+		_x_duration=${_x_duration:${#_x_unit}}
+		_x_factor=${_x_units[$_x_unit]}
 
-    	[[ $factor ]] || return 1
+		[[ $_x_factor ]] || return 1
 
-    	((seconds+=num*factor))
-    done
+		_x_seconds=$((_x_seconds+_x_num*_x_factor))
+	done
 
-    echo $seconds
+	_set $_x_var "$_x_seconds"
 }
 
-function trim {
-	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+function quote__ {
+	local _x_var=$1 && _var "$1" && shift || return
 
-    _trim _ "$@"
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	local _x_quote="'${1//\'/\'\\\'\'}'"
+
+	_set $_x_var "$_x_quote"
 }
 
-function triml {
-	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+function pad__ {
+	local _x_var=$1 && _var "$1" && shift || return
 
-    _trim - "$@"
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
+
+	local _x_str=$1 _x_len=$2 _x_pad=$3
+
+	[[ $_x_pad ]] || _x_pad=' '
+
+	valid_uint "$_x_len" || return $(errorf "Invalid pad length")
+
+	local _x_add_len _x_pad_len=${#_x_pad} _x_todo_len=$(($_x_len-${#_x_str}))
+
+	while [[ $_x_todo_len -gt 0 ]]; do
+		if [[ $_x_pad_len -lt $_x_todo_len ]]; then
+			_x_add_len=$_x_pad_len
+		else
+			_x_add_len=$_x_todo_len
+		fi
+
+		_x_str+=${_x_pad:0:_x_todo_len}
+
+		_x_todo_len=$((_x_todo_len-_x_add_len))
+	done
+
+	_set $_x_var "$_x_str"
 }
 
-function trimr {
+function trim__ {
+	local _x_var=$1 && _var "$1" && shift || return
+
 	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
 
-    _trim + "$@"
+	_trim $_x_var _ "$@"
+}
+
+function triml__ {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+	_trim $_x_var - "$@"
+}
+
+function trimr__ {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+	_trim $_x_var + "$@"
 }
 
 function _trim {
-    local side=$1 str=$2 chars=$3
+	local _x_var=$1 _x_side=$2 _x_str=$3 _x_chars=$4
 
-	[[ $# -gt 2 ]] || chars=$IFS
+	[[ $# -gt 3 ]] || _x_chars=$IFS
 
-	[[ $chars ]] || echo "$str"
+	if [[ $_x_chars ]]; then
+		local _x_i _x_len
 
-	local i len
-
-	if [[ $side == - || $side == _ ]]; then
-		len=${#str}
-		for ((i=0; i<len; i++)); do
-			[[ $chars == *"${str:i:1}"* ]] || break
-		done
-		str=${str:i}
-	fi
-
-	if [[ $side == + || $side == _ ]]; then
-		len=${#str}
-		for ((i=len; i>0; i--)); do
-			[[ $chars == *"${str:i-1:1}"* ]] || break
-		done
-		str=${str:0:i}
-	fi
-
-    echo "$str"
-}
-
-function array_push {
-	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
-
-	valid_name "$1" || return $(errorf "Illegal variable name")
-
-	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
-
-	local __v_name=$1 __v_list=$2 __v_delim=,
-
-	is_array "$__v_name" || ! is_declared "$__v_name" || return $(errorf "Variable is not an array")
-
-	if [[ $# -gt 2 ]]; then
-		__v_delim=$3
-
-		[[ ${#__v_delim} -le 1 ]] || return $(errorf "List delimiter must be a single character")
-	fi
-
-	readarray -O "$(eval "echo \${#$__v_name[@]}")" -d "$__v_delim" -t "$__v_name" < <(echo -n "$2")
-}
-
-function array_split {
-	[[ $# -eq 3 ]] || return $(errorf)
-
-	valid_name "$1" || return $(errorf "Illegal variable name")
-
-	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
-
-	local __v_name=$1 __v_str=$2 __v_regex=$3
-
-	is_array "$__v_name" || ! is_declared "$__v_name" || return $(errorf "Variable is not an array")
-
-	local __v_len __v_res=()
-
-	while :; do
-		if [[ $__v_str =~ ($__v_regex).* ]]; then
-			[[ ${BASH_REMATCH[1]} ]] || return $(errorf "Empty separator regular expression")
-
-			__v_res+=("${__v_str:0:-${#BASH_REMATCH[0]}}")
-			__v_str=${__v_str:${#__v_str}-${#BASH_REMATCH[0]}+${#BASH_REMATCH[1]}}
-		else
-			[[ $? -eq 1 ]] || return $(errorf "Invalid separator regular expression")
-
-			__v_res+=("$__v_str")
-			__v_str=
+		if [[ $_x_side == - || $_x_side == _ ]]; then
+			_x_len=${#_x_str}
+			for ((_x_i=0; _x_i<_x_len; _x_i++)); do
+				[[ $_x_chars == *"${_x_str:_x_i:1}"* ]] || break
+			done
+			_x_str=${_x_str:_x_i}
 		fi
 
-		[[ $__v_str ]] || break
+		if [[ $_x_side == + || $_x_side == _ ]]; then
+			_x_len=${#_x_str}
+			for ((_x_i=_x_len; _x_i>0; _x_i--)); do
+				[[ $_x_chars == *"${_x_str:_x_i-1:1}"* ]] || break
+			done
+			_x_str=${_x_str:0:_x_i}
+		fi
+	fi
+
+	_set $_x_var "$_x_str"
+}
+
+function list_join__ {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -ge 1 ]] || return $(errorf)
+
+	local _x_sep=$1 && shift
+
+	local _x_res _x_in
+	while [[ $# -gt 0 ]]; do
+		[[ $_x_in ]] && _x_res+=$_x_sep || _x_in=_
+		_x_res+=$1
+		shift
 	done
 
-    eval "$__v_name=(\"\${__v_res[@]}\")"
-}
-
-function array_filter {
-	[[ $# -ge 3 ]] || return $(errorf)
-
-	valid_name "$1" || return $(errorf "Illegal variable name")
-
-	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
-
-	local __v_name=$1 __v_op=$2 __v_type=_ __v_filter=$3 && shift 3
-
-	is_array "$__v_name" || return $(errorf "Variable is not an array")
-
-	if [[ ${#__v_op} -gt 1 ]]; then
-		__v_type=${__v_op:1}
-		__v_op=${__v_op:0:1}
-
-		[[ $__v_type == [_=~@] ]] || return $(errorf "Invalid filter operator")
-
-		if [[ $__v_type == '@' ]]; then
-			is_exec "$__v_filter" || return $(errorf "Filter command not defined")
-		else
-			[[ $# -eq 0 ]] || return $(errorf)
-		fi
-	fi
-
-	[[ $__v_op == [-+] ]] || return $(errorf "Invalid filter operator")
-
-	local __v_len="$(eval "echo \${#$__v_name[@]}")" __v_res=()
-
-	local __v_idx __v_val __v_match __v_found __v_arg __v_args=()
-
-    for ((__v_idx=0; __v_idx<$__v_len; __v_idx++)); do
-		__v_val=$(eval "echo \"\${$__v_name[$__v_idx]}\"")
-		__v_match=
-
-		case $__v_type in
-		'_')
-			if [[ $__v_val == "$__v_filter" ]]; then
-				__v_match=_
-			fi
-			;;
-		'=')
-			if [[ $__v_val == $__v_filter ]]; then
-				__v_match=_
-			fi
-			;;
-		'~')
-			if [[ $__v_val =~ $__v_filter ]]; then
-				__v_match=_
-			else
-				[[ $? -eq 1 ]] || return $(errorf "Invalid filter regular expression")
-			fi
-			;;
-		'@')
-			__v_args=()
-			__v_found=
-
-			for __v_arg in "$@"; do
-			    if [[ $__v_arg == *{}* ]]; then
-			        __v_arg=${__v_arg//\{\}/"$__v_val"}
-			        __v_found=_
-			    fi
-			    __v_args+=("$__v_arg")
-			done
-			[[ $__v_found ]] || __v_args+=("$__v_val")
-
-			if $__v_filter "${__v_args[@]}" >/dev/null; then
-				__v_match=_
-			fi
-			;;
-		esac
-
-		if [[ $__v_match ]]; then
-			[[ $__v_op == - ]] && continue
-		else
-			[[ $__v_op == + ]] && continue
-		fi
-
-        __v_res+=("$__v_val")
-    done
-
-    eval "$__v_name=(\"\${__v_res[@]}\")"
-}
-
-function array_map {
-	[[ $# -ge 2 ]] || return $(errorf)
-
-	valid_name "$1" || return $(errorf "Illegal variable name")
-
-	[[ $1 == __v_* ]] && return $(errorf "Conflicting variable name")
-
-	local __v_name=$1 __v_fct=$2 && shift 2
-
-	is_array "$__v_name" || return $(errorf "Variable is not an array")
-
-	is_exec "$__v_fct" || return $(errorf "Map command not defined")
-
-	local __v_len="$(eval "echo \${#$__v_name[@]}")" __v_res=()
-
-	local __v_idx __v_val __v_found __v_arg __v_args=()
-
-    for ((__v_idx=0; __v_idx<$__v_len; __v_idx++)); do
-		__v_val=$(eval "echo \"\${$__v_name[$__v_idx]}\"")
-
-		__v_args=()
-		__v_found=
-
-		for __v_arg in "$@"; do
-		    if [[ $__v_arg == *{}* ]]; then
-		        __v_arg=${__v_arg//\{\}/"$__v_val"}
-		        __v_found=_
-		    fi
-		    __v_args+=("$__v_arg")
-		done
-		[[ $__v_found ]] || __v_args+=("$__v_val")
-
-		__v_val=$($__v_fct "${__v_args[@]}") || return $?
-
-        __v_res+=("$__v_val")
-    done
-
-    eval "$__v_name=(\"\${__v_res[@]}\")"
+	_set $_x_var "$_x_res"
 }
 
 function list_contains {
 	[[ $# -ge 1 ]] || return $(errorf)
 
-    local elem=$1 && shift
+	local elem=$1 && shift
 
-    local e
-    for e in "$@"; do
-        [[ $e == "$elem" ]] && return 0
-    done
-    return 1
+	local e
+	for e in "$@"; do
+		[[ $e == "$elem" ]] && return 0
+	done
+	return 1
 }
 
 function list_selects {
@@ -716,21 +607,186 @@ function list_selects {
 
 	[[ $# -gt 1 ]] || return 0
 
-    list_contains "$@"
+	list_contains "$@"
 }
 
-function list_join {
-	[[ $# -ge 1 ]] || return $(errorf)
+#TODO slow (capture)
+function array_push {
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
-	local sep=$1 && shift
+	_var "$1" || return
 
-	local res in
-    while [[ $# -gt 0 ]]; do
-		[[ $in ]] && res+=$sep || in=_
-		res+=$1
-		shift
-    done
-    echo "$res"
+	local _x_var=$1 _x_list=$2 _x_delim=,
+
+	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	if [[ $# -gt 2 ]]; then
+		_x_delim=$3
+
+		[[ ${#_x_delim} -le 1 ]] || return $(errorf "List delimiter must be a single character")
+	fi
+
+	readarray -O "$(eval "echo \${#$_x_var[@]}")" -d "$_x_delim" -t "$_x_var" < <(echo -n "$2")
+}
+
+function array_split {
+	[[ $# -ge 3 && $# -le 4 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_str=$2 _x_regex=$3 _x_limit=0
+
+	if [[ $# -gt 3 ]]; then
+		_x_limit=$4
+
+		valid_uint "$_x_limit" || return $(errorf "Invalid limit number")
+	fi
+
+	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	local _x_count=0 _x_len _x_res=()
+
+	while :; do
+		((++_x_count))
+
+		if [[ $_x_limit -eq 0 || $_x_count -lt $_x_limit ]] && [[ $_x_str =~ ($_x_regex).* ]]; then
+			[[ ${BASH_REMATCH[1]} ]] || return $(errorf "Empty separator regular expression")
+
+			_x_res+=("${_x_str:0:-${#BASH_REMATCH[0]}}")
+			_x_str=${_x_str:${#_x_str}-${#BASH_REMATCH[0]}+${#BASH_REMATCH[1]}}
+		else
+			[[ $? -eq 1 ]] || return $(errorf "Invalid separator regular expression")
+
+			_x_res+=("$_x_str")
+			_x_str=
+		fi
+
+		[[ $_x_str ]] || break
+	done
+
+	eval $_x_var='("${_x_res[@]}")'
+}
+
+function array_filter {
+	[[ $# -ge 3 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_op=$2 _x_type=_ _x_filter=$3 && shift 3
+
+	! _debug || is_array "$_x_var" || warnf "Variable is not an array"
+
+	if [[ ${#_x_op} -gt 1 ]]; then
+		_x_type=${_x_op:1}
+		_x_op=${_x_op:0:1}
+
+		[[ $_x_type == [_=~@] ]] || return $(errorf "Invalid filter operator")
+
+		if [[ $_x_type == '@' ]]; then
+			! _debug || is_exec "$_x_filter" || warnf "Filter command not defined"
+		else
+			[[ $# -eq 0 ]] || return $(errorf)
+		fi
+	fi
+
+	[[ $_x_op == [-+] ]] || return $(errorf "Invalid filter operator")
+
+	local _x_len _x_arr=() _x_res=()
+
+	eval _x_len=\${#$_x_var[@]}
+	eval _x_arr='("${'$_x_var'[@]}")'
+
+	local _x_idx _x_val _x_match _x_found _x_arg _x_args=()
+
+	for _x_val in "${_x_arr[@]}"; do
+		_x_match=
+
+		case $_x_type in
+		'_')
+			if [[ $_x_val == "$_x_filter" ]]; then
+				_x_match=_
+			fi
+			;;
+		'=')
+			if [[ $_x_val == $_x_filter ]]; then
+				_x_match=_
+			fi
+			;;
+		'~')
+			if [[ $_x_val =~ $_x_filter ]]; then
+				_x_match=_
+			else
+				[[ $? -eq 1 ]] || return $(errorf "Invalid filter regular expression")
+			fi
+			;;
+		'@')
+			_x_args=()
+			_x_found=
+
+			for _x_arg in "$@"; do
+				if [[ $_x_arg == *{}* ]]; then
+					_x_arg=${_x_arg//\{\}/"$_x_val"}
+					_x_found=_
+				fi
+				_x_args+=("$_x_arg")
+			done
+			[[ $_x_found ]] || _x_args+=("$_x_val")
+
+			if $_x_filter "${_x_args[@]}" >/dev/null; then
+				_x_match=_
+			fi
+			;;
+		esac
+
+		if [[ $_x_match ]]; then
+			[[ $_x_op == - ]] && continue
+		else
+			[[ $_x_op == + ]] && continue
+		fi
+
+		_x_res+=("$_x_val")
+	done
+
+	eval $_x_var='("${_x_res[@]}")'
+}
+
+#TODO slow?
+function array_map {
+	[[ $# -ge 2 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_fct=$2 && shift 2
+
+	! _debug || is_array "$_x_var" || warnf "Variable is not an array"
+
+	! _debug || is_exec "$_x_fct" || warnf "Map command not defined"
+
+	local _x_len="$(eval "echo \${#$_x_var[@]}")" _x_res=()
+
+	local _x_idx _x_val _x_found _x_arg _x_args=()
+
+	for ((_x_idx=0; _x_idx<$_x_len; _x_idx++)); do
+		_x_val=$(eval "echo \"\${$_x_var[$_x_idx]}\"")
+
+		_x_args=()
+		_x_found=
+
+		for _x_arg in "$@"; do
+			if [[ $_x_arg == *{}* ]]; then
+				_x_arg=${_x_arg//\{\}/"$_x_val"}
+				_x_found=_
+			fi
+			_x_args+=("$_x_arg")
+		done
+		[[ $_x_found ]] || _x_args+=("$_x_val")
+
+		_x_val=$($_x_fct "${_x_args[@]}") || return $?
+
+		_x_res+=("$_x_val")
+	done
+
+	eval "$_x_var=(\"\${_x_res[@]}\")"
 }
 
 function file_split {
@@ -781,7 +837,7 @@ function tmp_dir {
 function require_command {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-    is_command "$1" || error "Command required: $1"
+	is_command "$1" || error "Command required: $1"
 }
 
 function run {
@@ -815,20 +871,20 @@ function exec_job {
 function kill_job {
 	[[ $# -le 1 ]] || return $(errorf)
 
-    [[ $# -eq 0 ]] && set %
+	[[ $# -eq 0 ]] && set %
 
-    local pid spec
+	local pid spec
 
-    if valid_uint "$1"; then
-    	pid=$1
+	if valid_uint "$1"; then
+		pid=$1
 
-    	local n pids=($(jobs -p))
-    	for ((n=1; n<=${#pids[@]}; n++)); do
-    		if [[ ${pids[n-1]} == $pid ]]; then
-    			spec=%$n
-    			break
-    		fi
-    	done
+		local n pids=($(jobs -p))
+		for ((n=1; n<=${#pids[@]}; n++)); do
+			if [[ ${pids[n-1]} == $pid ]]; then
+				spec=%$n
+				break
+			fi
+		done
 	else
 		pid=$(jobs -p "$1" 2>/dev/null) && spec=$1
 	fi
@@ -849,11 +905,11 @@ function coproc_exec {
 
 	local name=$1 && shift
 
-    valid_name "$name" || return $(errorf "Invalid coprocess name")
+	valid_name "$name" || return $(errorf "Invalid coprocess name")
 
-    declare -g -A _coproc
+	declare -g -A _coproc
 
-    [[ ${_coproc[$name]} ]] && return
+	[[ ${_coproc[$name]} ]] && return
 
 	set -m
 
@@ -873,15 +929,15 @@ function coproc_kill {
 
 	local name=$1
 
-    valid_name "$name" || return $(errorf "Invalid coprocess name")
+	valid_name "$name" || return $(errorf "Invalid coprocess name")
 
 	local pid=${_coproc[$name]}	
 
-    [[ $pid ]] || return $(errorf "Unknown coprocess")
+	[[ $pid ]] || return $(errorf "Unknown coprocess")
 
 	unset _coproc[$name] _coproc[$name:0] _coproc[$name:1]
 
-    kill_job $pid
+	kill_job $pid
 }
 
 function coproc_write {
@@ -889,17 +945,17 @@ function coproc_write {
 
 	local fd=${_coproc[$1:1]} && shift
 
-    [[ $fd ]] || return $(errorf "Unknown coprocess")
+	[[ $fd ]] || return $(errorf "Unknown coprocess")
 
-    if [[ $# -eq 0 ]]; then
-    	cat >&$fd
-    	return
-    fi
+	if [[ $# -eq 0 ]]; then
+		cat >&$fd
+		return
+	fi
 
-    while [[ $# -gt 0 ]]; do
-    	echo -n "$1" >&$fd
-    	shift
-    done
+	while [[ $# -gt 0 ]]; do
+		echo -n "$1" >&$fd
+		shift
+	done
 }
 
 function coproc_read_line {
@@ -907,9 +963,9 @@ function coproc_read_line {
 
 	local fd=${_coproc[$1:0]} && shift
 
-    [[ $fd ]] || return $(errorf "Unknown coprocess")
+	[[ $fd ]] || return $(errorf "Unknown coprocess")
 
-    IFS= read -r COPROC_DATA <&$fd || return $(errorf "Failed reading line")
+	IFS= read -r COPROC_DATA <&$fd || return $(errorf "Failed reading line")
 }
 
 function coproc_read_field {
@@ -917,48 +973,130 @@ function coproc_read_field {
 
 	local fd=${_coproc[$1:0]} && shift
 
-    [[ $fd ]] || return $(errorf "Unknown coprocess")
+	[[ $fd ]] || return $(errorf "Unknown coprocess")
 
-    local size end
+	local size end
 
-    IFS= read -r size <&$fd || return $(errorf "Failed reading field size")
+	IFS= read -r size <&$fd || return $(errorf "Failed reading field size")
 
-    valid_uint "$size" || return $(errorf "Invalid field size read: $size")
+	valid_uint "$size" || return $(errorf "Invalid field size read: $size")
 
-    IFS= read -r -d '' -n "$size" COPROC_DATA <&$fd || return $(errorf "Failed reading field value")
+	IFS= read -r -d '' -n "$size" COPROC_DATA <&$fd || return $(errorf "Failed reading field value")
 
-    IFS= read -r end <&$fd || return $(errorf "Failed reading field end")
+	IFS= read -r end <&$fd || return $(errorf "Failed reading field end")
 
-    [[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
+	[[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
+}
+
+#TODO why?
+function  array_name {
+	:
+}
+
+#TODO why?
+function  array_set {
+	[[ $# -gt 1 ]] || return $(errorf)
+
+	local value=$1 && shift
+
+	declare -g -A _array
+
+	local name=_array_
+
+	#while [[ $# -gt 0 ]]; do
+	#done
+
+}
+
+function  array_get {
+	:
 }
 
 function exit_hook {
 	[[ $# -ge 1 ]] || return $(errorf)
 
-    declare -g -a _exit_hook_p _exit_hook_s _exit_hook_c
+	declare -g -a _exit_hook_p _exit_hook_s _exit_hook_c
 
-    _exit_hook_p+=($BASHPID)
-    _exit_hook_s+=(${#@})
-    _exit_hook_c+=("$@")
+	_exit_hook_p+=($BASHPID)
+	_exit_hook_s+=(${#@})
+	_exit_hook_c+=("$@")
 
-    trap _exit_hook EXIT
+	trap _exit_hook EXIT
 }
 
 function _exit_hook {
 	local len
-    while [[ ${#_exit_hook_s[@]} -gt 0 ]]; do
-    	[[ ${_exit_hook_p[-1]} == $BASHPID ]] || break
+	while [[ ${#_exit_hook_s[@]} -gt 0 ]]; do
+		[[ ${_exit_hook_p[-1]} == $BASHPID ]] || break
 
-    	_trace && trace "Exit hook #${#_exit_hook_s[@]}"
+		_trace && trace "Exit hook #${#_exit_hook_s[@]}"
 
-        len=${_exit_hook_s[-1]}
+		len=${_exit_hook_s[-1]}
 
-        run "${_exit_hook_c[@]: -len}" || :
+		run "${_exit_hook_c[@]: -len}" || :
 
-        _exit_hook_c=("${_exit_hook_c[@]:0:${#_exit_hook_c[@]}-len}")
-        unset _exit_hook_s[-1]
-        unset _exit_hook_p[-1]
-    done
+		_exit_hook_c=("${_exit_hook_c[@]:0:${#_exit_hook_c[@]}-len}")
+		unset _exit_hook_s[-1]
+		unset _exit_hook_p[-1]
+	done
 }
 
-__functions__=_
+function _set {
+	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	if [[ $# -gt 1 ]]; then
+		eval "$1=\$2"
+	else
+		unset "$1"
+	fi
+}
+
+function _var {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	valid_name "$1" || return $(errorf "Illegal variable name")
+
+	[[ $1 == _x_* ]] && return $(errorf "Conflicting variable name")
+
+	return 0
+}
+
+__functions_init() {
+	local fct name args=()
+
+	while read -r -a args; do
+		fct=${args[-1]}
+		[[ $fct == *[[:alnum:]]__ ]] || continue
+
+		name=${fct:0:-2}
+		[[ $name ]] || continue
+
+		eval '
+			function '$name'_ {
+				[[ $# -gt 0 ]] || return $(errorf)
+
+				_var "$1" || return
+
+				local _x_var=$1 _x_val
+
+				eval _x_val=\$$_x_var
+
+				'$fct' "$_x_var" "$_x_val" "${@:2}"
+			}
+
+			function '$name' {
+				local out
+
+				'$fct' out "$@"
+
+				echo -n "$out"
+			}
+		'
+	done < <(
+		declare -F
+	)
+}
+
+__functions_init && __functions__=_
