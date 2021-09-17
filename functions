@@ -644,16 +644,19 @@ function array_split {
 
 	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
 
-	local _x_count=0 _x_len _x_res=()
+	local _x_count=0 _x_sep _x_rem _x_res=()
 
 	while :; do
 		((++_x_count))
 
 		if [[ $_x_limit -eq 0 || $_x_count -lt $_x_limit ]] && [[ $_x_str =~ ($_x_regex).* ]]; then
-			[[ ${BASH_REMATCH[1]} ]] || return $(errorf "Empty separator regular expression")
+			_x_sep=${BASH_REMATCH[1]}
+			_x_rem=${BASH_REMATCH[0]}
 
-			_x_res+=("${_x_str:0:-${#BASH_REMATCH[0]}}")
-			_x_str=${_x_str:${#_x_str}-${#BASH_REMATCH[0]}+${#BASH_REMATCH[1]}}
+			[[ $_x_sep ]] || _x_rem=${_x_rem:1}
+
+			_x_res+=("${_x_str:0:-${#_x_rem}}")
+			_x_str=${_x_str:${#_x_str}-${#_x_rem}+${#_x_sep}}
 		else
 			[[ $? -eq 1 ]] || return $(errorf "Invalid separator regular expression")
 
@@ -696,7 +699,7 @@ function array_filter {
 	eval _x_len=\${#$_x_var[@]}
 	eval _x_arr='("${'$_x_var'[@]}")'
 
-	local _x_idx _x_val _x_match _x_found _x_arg _x_args=()
+	local _x_val _x_match _x_found _x_arg _x_args=()
 
 	for _x_val in "${_x_arr[@]}"; do
 		_x_match=
@@ -762,13 +765,14 @@ function array_map {
 
 	! _debug || is_exec "$_x_fct" || warnf "Map command not defined"
 
-	local _x_len="$(eval "echo \${#$_x_var[@]}")" _x_res=()
+	local _x_len _x_arr=() _x_res=()
 
-	local _x_idx _x_val _x_found _x_arg _x_args=()
+	eval _x_len=\${#$_x_var[@]}
+	eval _x_arr='("${'$_x_var'[@]}")'
 
-	for ((_x_idx=0; _x_idx<$_x_len; _x_idx++)); do
-		_x_val=$(eval "echo \"\${$_x_var[$_x_idx]}\"")
+	local _x_val _x_found _x_arg _x_args=()
 
+	for _x_val in "${_x_arr[@]}"; do
 		_x_args=()
 		_x_found=
 
