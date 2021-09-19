@@ -610,23 +610,35 @@ function list_selects {
 	list_contains "$@"
 }
 
-#TODO slow (capture)
 function array_push {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
 	_var "$1" || return
 
-	local _x_var=$1 _x_list=$2 _x_delim=,
+	local _x_var=$1 _x_str=$2 _x_delim=$3
 
 	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
 
-	if [[ $# -gt 2 ]]; then
-		_x_delim=$3
+	[[ $# -ge 3 ]] || _x_delim=,
 
-		[[ ${#_x_delim} -le 1 ]] || return $(errorf "List delimiter must be a single character")
-	fi
+	local _x_slen=${#_x_str} _x_dlen=${#_x_delim}
+	local _x_pos=0 _x_cur= _x_res=()
 
-	readarray -O "$(eval "echo \${#$_x_var[@]}")" -d "$_x_delim" -t "$_x_var" < <(echo -n "$2")
+	while [[ $_x_pos -lt $_x_slen ]]; do
+		if [[ $_x_dlen -eq 0 ]]; then
+			_x_res+=("${_x_str:_x_pos++:1}")
+		elif [[ ${_x_str:_x_pos:_x_dlen} == "$_x_delim" ]]; then
+			_x_res+=("$_x_cur")
+			_x_cur=
+			((_x_pos+=_x_dlen))
+		else
+			_x_cur+=${_x_str:_x_pos++:1}
+		fi
+	done
+
+	[[ $_x_cur ]] && _x_res+=("$_x_cur")
+
+	eval $_x_var+='("${_x_res[@]}")'
 }
 
 function array_split {
@@ -647,7 +659,7 @@ function array_split {
 		if bool "$5"; then
 			_x_keep=_
 		elif [[ $? -ne 1 ]]; then
-			return $(errorf "Invalid keep boolean argument")
+			return $(errorf "Invalid boolean for keep")
 		fi
 	fi
 
@@ -762,7 +774,7 @@ function array_filter {
 	eval $_x_var='("${_x_res[@]}")'
 }
 
-#TODO slow?
+#TODO detect pipeline functions to avoid capture?
 function array_map {
 	[[ $# -ge 2 ]] || return $(errorf)
 
