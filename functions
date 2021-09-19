@@ -630,19 +630,26 @@ function array_push {
 }
 
 function array_split {
-	[[ $# -ge 3 && $# -le 4 ]] || return $(errorf)
+	[[ $# -ge 3 && $# -le 5 ]] || return $(errorf)
 
 	_var "$1" || return
 
-	local _x_var=$1 _x_str=$2 _x_regex=$3 _x_limit=0
+	local _x_var=$1 _x_str=$2 _x_regex=$3 _x_limit=0 _x_keep=
 
-	if [[ $# -gt 3 ]]; then
+	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	if [[ $# -ge 4 ]]; then
 		_x_limit=$4
 
 		valid_uint "$_x_limit" || return $(errorf "Invalid limit number")
 	fi
-
-	! _debug || is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+	if [[ $# -ge 5 ]]; then
+		if bool "$5"; then
+			_x_keep=_
+		elif [[ $? -ne 1 ]]; then
+			return $(errorf "Invalid keep boolean argument")
+		fi
+	fi
 
 	local _x_count=0 _x_sep _x_rem _x_res=()
 
@@ -656,6 +663,8 @@ function array_split {
 			[[ $_x_sep ]] || _x_rem=${_x_rem:1}
 
 			_x_res+=("${_x_str:0:-${#_x_rem}}")
+			[[ $_x_keep ]] && _x_res+=("$_x_sep")
+
 			_x_str=${_x_str:${#_x_str}-${#_x_rem}+${#_x_sep}}
 		else
 			[[ $? -eq 1 ]] || return $(errorf "Invalid separator regular expression")
@@ -997,7 +1006,7 @@ function  array_name {
 	:
 }
 
-#TODO why?
+#TODO why? pck?
 function  array_set {
 	[[ $# -gt 1 ]] || return $(errorf)
 
