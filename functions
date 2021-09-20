@@ -26,7 +26,9 @@ trace () { log 5 "$@"; }
 function errorf {
 	[[ $# -gt 0 ]] || set "Invalid arguments"
 
-	( error "${BASH_SOURCE[2]}[${BASH_LINENO[1]}] ${FUNCNAME[1]}:" "$@" ) || :
+	_caller
+
+	( error "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@" ) || :
 
 	echo 2
 }
@@ -34,7 +36,9 @@ function errorf {
 function warnf {
 	[[ $# -gt 0 ]] || set "Unexpected arguments"
 
-	warn "${BASH_SOURCE[2]}[${BASH_LINENO[1]}] ${FUNCNAME[1]}:" "$@"
+	_caller
+
+	warn "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@"
 }
 
 function is_declared {
@@ -94,6 +98,12 @@ function is_function {
 	[[ $# -eq 1 ]] || return $(errorf)
 
 	declare -F "$1" >/dev/null
+}
+
+function is_pipeline {
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	declare -F "$1" "$1"_ "$1"__ >/dev/null
 }
 
 function is_command {
@@ -774,41 +784,46 @@ function array_filter {
 	eval $_x_var='("${_x_res[@]}")'
 }
 
-#TODO detect pipeline functions to avoid capture?
 function array_map {
 	[[ $# -ge 2 ]] || return $(errorf)
 
 	_var "$1" || return
 
-	local _x_var=$1 _x_fct=$2 && shift 2
+	local _x_var=$1 _x_exec=$2 && shift 2
 
 	! _debug || is_array "$_x_var" || warnf "Variable is not an array"
 
-	! _debug || is_exec "$_x_fct" || warnf "Map command not defined"
+	! _debug || is_exec "$_x_exec" || warnf "Map command not defined"
 
 	local _x_len _x_arr=() _x_res=()
 
 	eval _x_len=\${#$_x_var[@]}
 	eval _x_arr='("${'$_x_var'[@]}")'
 
-	local _x_val _x_found _x_arg _x_args=()
+	local _x_val_ _x_found _x_pipeline _x_arg _x_args=()
 
-	for _x_val in "${_x_arr[@]}"; do
+	is_pipeline "$_x_exec" && _x_pipeline=_
+
+	for _x_val_ in "${_x_arr[@]}"; do
 		_x_args=()
 		_x_found=
 
 		for _x_arg in "$@"; do
 			if [[ $_x_arg == *{}* ]]; then
-				_x_arg=${_x_arg//\{\}/"$_x_val"}
+				_x_arg=${_x_arg//\{\}/"$_x_val_"}
 				_x_found=_
 			fi
 			_x_args+=("$_x_arg")
 		done
-		[[ $_x_found ]] || _x_args+=("$_x_val")
+		[[ $_x_found ]] || _x_args+=("$_x_val_")
 
-		_x_val=$($_x_fct "${_x_args[@]}") || return $?
+		if [[ $_x_pipeline ]]; then
+			${_x_exec}__ _x_val_ "${_x_args[@]}"
+		else
+			_x_val_=$($_x_exec "${_x_args[@]}") || return $?
+		fi
 
-		_x_res+=("$_x_val")
+		_x_res+=("$_x_val_")
 	done
 
 	eval "$_x_var=(\"\${_x_res[@]}\")"
@@ -1046,10 +1061,10 @@ function exit_hook {
 	_exit_hook_s+=(${#@})
 	_exit_hook_c+=("$@")
 
-	trap _exit_hook EXIT
+	trap _exit_hook_ EXIT
 }
 
-function _exit_hook {
+function _exit_hook_ {
 	local len
 	while [[ ${#_exit_hook_s[@]} -gt 0 ]]; do
 		[[ ${_exit_hook_p[-1]} == $BASHPID ]] || break
@@ -1066,9 +1081,17 @@ function _exit_hook {
 	done
 }
 
-function _set {
-	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
+function _caller {
+	local depth=2 caller=${FUNCNAME[2]}
 
+	[[ $caller == _* && $caller != *_ ]] && ((++depth))
+
+	CALLER_SOURCE=${BASH_SOURCE[depth+1]}
+	CALLER_LINENO=${BASH_LINENO[depth]}
+	CALLER_FUNCNAME=${FUNCNAME[depth]}
+}
+
+function _set {
 	_var "$1" || return
 
 	if [[ $# -gt 1 ]]; then
@@ -1079,11 +1102,9 @@ function _set {
 }
 
 function _var {
-	[[ $# -eq 1 ]] || return $(errorf)
-
 	valid_name "$1" || return $(errorf "Illegal variable name")
 
-	[[ $1 == _x_* ]] && return $(errorf "Conflicting variable name")
+	[[ $1 == _x_* && $1 != *_ ]] && return $(errorf "Conflicting variable name")
 
 	return 0
 }
