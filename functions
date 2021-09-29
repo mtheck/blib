@@ -103,7 +103,7 @@ function is_function {
 function is_pipeline {
 	[[ $# -eq 1 ]] || return $(errorf)
 
-	declare -F "$1" "$1"_ "$1"__ >/dev/null
+	declare -F "$1"{,_,__} >/dev/null
 }
 
 function is_command {
