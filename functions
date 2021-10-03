@@ -28,7 +28,7 @@ function errorf {
 
 	_caller
 
-	( error "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@" ) || :
+	! ( error "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@" )
 
 	echo 2
 }
@@ -826,7 +826,146 @@ function array_map {
 		_x_res+=("$_x_val_")
 	done
 
-	eval "$_x_var=(\"\${_x_res[@]}\")"
+	eval $_x_var='("${_x_res[@]}")'
+}
+
+function  struct_new {
+	[[ $# -gt 1 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 && shift
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+
+	eval _x_len=\${#$_x_var[@]} && [[ $_x_len -eq 0 ]] || return $(errorf "Struct variable must be empty")
+
+	local _x_field
+	for _x_field in "$@"; do
+		valid_name "$_x_field" || return $(errorf "Illegal field name")
+	done
+
+	IFS=' ' eval $_x_var[:]='"$*"'
+}
+
+function  struct_get {
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_key=$2 _x_target=$1
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+
+	[[ $_x_key ]] || return $(errorf "Illegal empty key")
+
+	if [[ $# -ge 3 ]]; then
+		_var "$3" || return
+
+		_x_target=$3
+
+		! _debug || is_hash "$_x_target" || warnf "Target variable is not an associative array"
+	fi
+
+	local _x_fields _x_field
+
+	eval _x_fields=\${$_x_var[:]}
+
+	for _x_field in $_x_fields; do
+		eval $_x_target[$_x_field]=\${$_x_var[\$_x_key:$_x_field]}
+	done
+}
+
+function  struct_set {
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_key=$2 _x_target=$1
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+
+	[[ $_x_key ]] || return $(errorf "Illegal empty key")
+
+	if [[ $# -ge 3 ]]; then
+		_var "$3" || return
+
+		_x_target=$3
+
+		! _debug || is_hash "$_x_target" || warnf "Target variable is not an associative array"
+	fi
+
+	local _x_fields _x_field
+
+	eval _x_fields=\${$_x_var[:]}
+
+	for _x_field in $_x_fields; do
+		eval $_x_var[\$_x_key:$_x_field]=\${$_x_target[$_x_field]}
+	done
+
+	eval $_x_var[\$_x_key:]=_
+}
+
+function  struct_del {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_key=$2
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+
+	[[ $_x_key ]] || return $(errorf "Illegal empty key")
+
+	local _x_fkey _x_fkeys=()
+
+	eval _x_fkeys='("${!'$_x_var'[@]}")'
+
+	for _x_fkey in "${_x_fkeys[@]}"; do
+		[[ $_x_fkey == *:* ]] || continue
+		[[ ${_x_fkey%:*} == "$_x_key" ]] || continue
+
+		eval unset $_x_var[\$_x_fkey]
+	done
+}
+
+function  struct_key {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_key=$2 _x_found
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+
+	[[ $_x_key ]] || return $(errorf "Illegal empty key")
+
+	eval _x_found=\${$_x_var[\$_x_key:]}
+
+	[[ $_x_found ]]
+}
+
+function  struct_keys {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	_var "$1" && _var "$2" || return
+
+	local _x_var=$1 _x_target=$2
+
+	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_array "$_x_target" || warnf "Target variable is not an array"
+
+	local _x_fkey _x_fkeys=() _x_keys=()
+
+	eval _x_fkeys='("${!'$_x_var'[@]}")'
+
+	for _x_fkey in "${_x_fkeys[@]}"; do
+		[[ $_x_fkey == *?: ]] || continue
+
+		_x_keys+=("${_x_fkey:0:-1}")
+	done
+
+	eval $_x_target='("${_x_keys[@]}")'
 }
 
 function file_split {
@@ -1028,30 +1167,6 @@ function coproc_read_field {
 	[[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
 }
 
-#TODO why?
-function  array_name {
-	:
-}
-
-#TODO why? pck?
-function  array_set {
-	[[ $# -gt 1 ]] || return $(errorf)
-
-	local value=$1 && shift
-
-	declare -g -A _array
-
-	local name=_array_
-
-	#while [[ $# -gt 0 ]]; do
-	#done
-
-}
-
-function  array_get {
-	:
-}
-
 function exit_hook {
 	[[ $# -ge 1 ]] || return $(errorf)
 
@@ -1095,9 +1210,9 @@ function _set {
 	_var "$1" || return
 
 	if [[ $# -gt 1 ]]; then
-		eval "$1=\$2"
+		eval $1=\$2
 	else
-		unset "$1"
+		unset $1
 	fi
 }
 
