@@ -44,6 +44,11 @@ function warnf {
 function is_declared {
 	[[ $# -ge 1 ]] || return $(errorf)
 
+	if [[ $# -eq 1 ]]; then
+		declare -p "$1" &>/dev/null
+		return
+	fi
+
 	local attrs=$(declare -p "$1" 2>/dev/null)
 	shift
 
@@ -51,7 +56,6 @@ function is_declared {
 	attrs=${attrs%% *}
 
 	[[ $attrs ]] || return 1
-	[[ $# -gt 0 ]] || return 0
 
 	attrs=${attrs##*-}
 
