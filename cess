@@ -14,9 +14,12 @@ Usage:
 Options:
   --help, -h
     Display this help
+  <less options>
 END
     exit 2
 }
+
+less_options=()
 
 while [[ $# -gt 0 ]]; do
 case $1 in
@@ -28,7 +31,8 @@ case $1 in
     break
     ;;
 -*)
-    error "Unknown option: $1"
+    less_options+=("$1")
+    shift
     ;;
 *)
     break
@@ -42,4 +46,4 @@ tmp_file; tf=$TMP_FILE
 
 run "$@" > "$tf"
 
-less -- "$tf"
+less -f "${less_options[@]}" -- "$tf"
