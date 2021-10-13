@@ -676,7 +676,7 @@ function array_filter__:aa {
 
 		[[ $_x_type == [_=~@] ]] || return $(errorf "Invalid filter operator")
 
-		if [[ $_x_type == '@' ]]; then
+		if [[ $_x_type == @ ]]; then
 			! _debug || is_exec "$_x_filter" || warnf "Filter command not defined"
 		else
 			[[ $# -eq 0 ]] || return $(errorf)
@@ -756,11 +756,11 @@ function array_map__:aa {
 
 	! _debug || is_exec "$_x_exec" || warnf "Map command not defined"
 
-	local _x_val=() _x_found _x_pipeline _x_arg _x_args=() _x_elems=() _x_elem_
+	local _x_val=() _x_found _x_pipe _x_arg _x_args=() _x_elems=() _x_elem_
 
 	eval _x_elems='("${'$_x_arr'[@]}")'
 
-	is_pipeline "$_x_exec" && _x_pipeline=_
+	is_pipeline "$_x_exec" && _x_pipe=_
 
 	for _x_elem_ in "${_x_elems[@]}"; do
 		_x_args=()
@@ -775,14 +775,14 @@ function array_map__:aa {
 		done
 
 		if [[ ! $_x_found ]]; then
-			if [[ $_x_pipeline ]]; then
+			if [[ $_x_pipe ]]; then
 				_x_args=("$_x_elem_" "${_x_args[@]}")
 			else
 				_x_args+=("$_x_elem_")
 			fi
 		fi
 
-		if [[ $_x_pipeline ]]; then
+		if [[ $_x_pipe ]]; then
 			${_x_exec}__ _x_elem_ "${_x_args[@]}"
 		else
 			_x_elem_=$($_x_exec "${_x_args[@]}") || return $?
@@ -862,7 +862,6 @@ function array_join__:-a {
 	for _x_elem in  "${_x_elems[@]}"; do
 		[[ $_x_set ]] && _x_val+=$_x_sep || _x_set=_
 		_x_val+=$_x_elem
-		shift
 	done
 
 	eval $_x_var='("${_x_val[@]}")'
@@ -1255,6 +1254,102 @@ function coproc_read_field {
 	[[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
 }
 
+function @__ {
+    [[ $# -ge 3 ]] || return $(errorf)
+
+	local _x_var_=$1 _x_val=$2 && shift 2
+
+	local i spec fct flen plen char depth arg args=() pipe=()
+
+	while [[ ${#@} -gt 0 ]]; do
+		spec=$1 && shift
+
+		fct=${spec%%{*}
+
+		is_pipeline "$fct" || return $(errorf "Function not a pipeline: $fct")
+
+		spec=${spec:${#fct}} arg= args=()
+
+		if [[ $spec ]]; then
+			spec=${spec:1} char=
+
+			while [[ $spec ]]; do
+				char=${spec:0:1}
+				spec=${spec:1}
+
+				[[ $char == } ]] && break
+
+				[[ $char == , ]] && args+=("$arg") arg= && continue
+
+				[[ $char != \{ || $arg ]] && arg+=$char && continue
+
+				if [[ $spec ]]; then
+					depth=1
+					for ((i=0; i<0; i++)); do
+						:
+					done
+				else
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing opened isolated argument of function: $fct ${args[*]} $arg")
+
+					arg+=$1 && shift
+
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing closing argument for isolated argument of function: $fct ${args[*]} $arg")
+
+					[[ $1 == }* ]] || return $(errorf "Missing closing brace for isolated argument of function: $fct ${args[*]} $arg")
+
+					spec=${1:1} && shift
+				fi
+			done
+
+			[[ $char == } ]] || return $(errorf "Missing closing brace for arguments of function: $fct ${args[*]} $arg")
+
+			[[ $spec ]] && return $(errorf "Unexpected content '$spec' after arguments of function: $fct ${args[*]} $arg")
+		fi
+
+		pipe+=("$fct" ${#args[@]} "${args[@]}")
+	done
+
+	plen=${#pipe[@]}
+	while [[ ${#pipe[@]} -gt 0 ]]; do
+		fct=${pipe[0]}
+		flen=${pipe[1]}
+
+		args=("$fct"_ _x_var_)
+
+		[[ $plen && ${#pipe[@]} -eq $plen ]] && \
+			args[0]+=_ args+=("$_x_val") plen=
+
+		[[ $flen -gt 0 ]] && \
+			args+=("${pipe[@]:2:flen}")
+
+		"${args[@]}"
+
+		pipe=("${pipe[@]:2+flen}")
+	done
+}
+
+function @_ {
+    [[ $# -ge 2 ]] || return $(errorf)
+
+    _var "$1" || return
+
+    local _x_var=$1 _x_val=$1 _x_fct=${2%%{*}
+
+    if is_pipeline "$fct" && "$fct"__: _ -; then
+		eval _x_val=\$$_x_var
+    fi
+
+    @__ $_x_var "$_x_val" "${@:2}"
+}
+
+function @ {
+    local _x_var_
+
+    @__ _x_var_ "$@"
+
+    echo "${_x_var_[*]}"
+}
+
 function exit_hook {
 	[[ $# -ge 1 ]] || return $(errorf)
 
@@ -1348,7 +1443,21 @@ __functions() {
 
 		eval '
 			function '"$name"'__: {
-				'"$fct"' "$@"
+				local i arg type proto='"$proto"'
+
+				for arg; do
+					[[ $proto ]] || return 1
+
+					type=${proto:0:1} proto=${proto:1}
+
+					for ((i=0; i<${#arg}; i++)); do
+						[[ ${arg:i:1} == [_$type] ]] && continue 2
+					done
+
+					return 1
+				done
+
+				return 0
 			}
 
 			function '"$name"'__ {
@@ -1372,7 +1481,7 @@ __functions() {
 
 				'"$fct"' _x_var_ "$@"
 
-				echo -n "'"$out_val"'"
+				echo "'"$out_val"'"
 			}
 		'
 	done < <(
