@@ -233,7 +233,7 @@ function echoc {
 	local nl
 	[[ $1 == -n ]] && nl=$1 && shift
 
-	local color base code sep=${IFS:0:1}
+	local color base code sep=' '
 
 	if [[ $ECHOC ]]; then
 		bool $ECHOC && color=_
@@ -344,7 +344,7 @@ function log {
 		log_prefix='>>>'
 	fi
 
-	local prefix=$log_prefix prefix_args=() header_args=()
+	local prefix=$log_prefix prefix_args=()
 
 	[[ -t 2 && $log_prefix_opt != + ]] && prefix=
 
@@ -370,8 +370,6 @@ function log {
 		_caller_
 	fi
 
-	[[ ${#prefix_args[@]} -gt 0 ]] && prefix_args=("${prefix_args[*]}${IFS:0:1}")
-
 	local header=${level_def%%:*} color=${level_def##*:}
 
 	[[ $color ]] || color=none
@@ -384,11 +382,13 @@ function log {
 	fi
 
 	if [[ $header ]]; then
-		header_args+=(@$header_color "$header")
-		header_args+=(@$sep_color ': ')
+		prefix_args+=(@$header_color@ "$header")
+		prefix_args+=(@$sep_color ':')
 	fi
 
-	echoe -n "${prefix_args[@]}" "${header_args[@]}"
+	[[ ${#prefix_args[@]} -gt 0 ]] && prefix_args+=('')
+
+	echoe -n "${prefix_args[@]}"
 	ECHOC_BASE=$color echoe "$@"
 }
 
@@ -570,7 +570,7 @@ function trimr__:-- {
 function _trim {
 	local _x_var=$1 _x_side=$2 _x_str=$3 _x_chars=$4
 
-	[[ $# -gt 3 ]] || _x_chars=$IFS
+	[[ $# -gt 3 ]] || _x_chars=$' \t\n'
 
 	if [[ $_x_chars ]]; then
 		local _x_i _x_len
@@ -593,6 +593,38 @@ function _trim {
 	fi
 
 	eval $_x_var=\$_x_str
+}
+
+function upper__:-- {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	eval $_x_var='${1^^}'
+}
+
+function lower__:-- {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	eval $_x_var='${1,,}'
+}
+
+function upperf__:-- {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	eval $_x_var='${1^}'
+}
+
+function lowerf__:-- {
+	local _x_var=$1 && _var "$1" && shift || return
+
+	[[ $# -eq 1 ]] || return $(errorf)
+
+	eval $_x_var='${1,}'
 }
 
 function list_contains {
@@ -867,7 +899,7 @@ function array_join__:-a {
 	eval $_x_var='("${_x_val[@]}")'
 }
 
-function  struct_new {
+function struct_new {
 	[[ $# -gt 1 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -886,7 +918,7 @@ function  struct_new {
 	IFS=' ' eval $_x_var[:]='"$*"'
 }
 
-function  struct_get {
+function struct_get {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -914,12 +946,12 @@ function  struct_get {
 	done
 }
 
-function  struct_pop {
+function struct_pop {
 	struct_get "$@"
 	struct_del $1 "$2"
 }
 
-function  struct_set {
+function struct_set {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -949,12 +981,12 @@ function  struct_set {
 	eval $_x_var[\$_x_key:]=_
 }
 
-function  struct_push {
+function struct_push {
 	struct_set "$@"
 	struct_clear $1 "${@:3}"
 }
 
-function  struct_del {
+function struct_del {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -977,7 +1009,7 @@ function  struct_del {
 	done
 }
 
-function  struct_clear {
+function struct_clear {
 	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -1003,7 +1035,7 @@ function  struct_clear {
 	done
 }
 
-function  struct_key {
+function struct_key {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	_var "$1" || return
@@ -1019,7 +1051,7 @@ function  struct_key {
 	[[ $_x_found ]]
 }
 
-function  struct_keys {
+function struct_keys {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	_var "$1" && _var "$2" || return
@@ -1042,7 +1074,7 @@ function  struct_keys {
 	eval $_x_target='("${_x_keys[@]}")'
 }
 
-function  struct_fields {
+function struct_fields {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	_var "$1" && _var "$2" || return
@@ -1109,7 +1141,7 @@ function require_command {
 function run {
 	[[ $# -ge 1 ]] || return $(errorf)
 
-	if [[ $# -eq 1 && $IFS && $1 == *${IFS:0:1}* && $SHELL ]]; then
+	if [[ $# -eq 1 && $1 == *' '* && $SHELL ]]; then
 		set -- "$SHELL" -c "$1"
 	fi
 
@@ -1254,100 +1286,154 @@ function coproc_read_field {
 	[[ ${#end} -eq 0 ]] || return $(errorf "Unexpected data after field value")
 }
 
-function @__ {
-    [[ $# -ge 3 ]] || return $(errorf)
+function @- {
+	local _x_var__ _x_ifs IFS=$IFS
 
-	local _x_var_=$1 _x_val=$2 && shift 2
+	while IFS= read -r _x_var__; do
+		@_ _x_var__ "$@"
 
-	local i spec fct flen plen char depth arg args=() pipe=()
+		_x_ifs=$IFS IFS=$'\n'
 
-	while [[ ${#@} -gt 0 ]]; do
-		spec=$1 && shift
+		echo "${_x_var__[*]}"
 
-		fct=${spec%%{*}
+		IFS=$_x_ifs
 
-		is_pipeline "$fct" || return $(errorf "Function not a pipeline: $fct")
-
-		spec=${spec:${#fct}} arg= args=()
-
-		if [[ $spec ]]; then
-			spec=${spec:1} char=
-
-			while [[ $spec ]]; do
-				char=${spec:0:1}
-				spec=${spec:1}
-
-				[[ $char == } ]] && break
-
-				[[ $char == , ]] && args+=("$arg") arg= && continue
-
-				[[ $char != \{ || $arg ]] && arg+=$char && continue
-
-				if [[ $spec ]]; then
-					depth=1
-					for ((i=0; i<0; i++)); do
-						:
-					done
-				else
-					[[ ${#@} -gt 0 ]] || return $(errorf "Missing opened isolated argument of function: $fct ${args[*]} $arg")
-
-					arg+=$1 && shift
-
-					[[ ${#@} -gt 0 ]] || return $(errorf "Missing closing argument for isolated argument of function: $fct ${args[*]} $arg")
-
-					[[ $1 == }* ]] || return $(errorf "Missing closing brace for isolated argument of function: $fct ${args[*]} $arg")
-
-					spec=${1:1} && shift
-				fi
-			done
-
-			[[ $char == } ]] || return $(errorf "Missing closing brace for arguments of function: $fct ${args[*]} $arg")
-
-			[[ $spec ]] && return $(errorf "Unexpected content '$spec' after arguments of function: $fct ${args[*]} $arg")
-		fi
-
-		pipe+=("$fct" ${#args[@]} "${args[@]}")
-	done
-
-	plen=${#pipe[@]}
-	while [[ ${#pipe[@]} -gt 0 ]]; do
-		fct=${pipe[0]}
-		flen=${pipe[1]}
-
-		args=("$fct"_ _x_var_)
-
-		[[ $plen && ${#pipe[@]} -eq $plen ]] && \
-			args[0]+=_ args+=("$_x_val") plen=
-
-		[[ $flen -gt 0 ]] && \
-			args+=("${pipe[@]:2:flen}")
-
-		"${args[@]}"
-
-		pipe=("${pipe[@]:2+flen}")
+		unset _x_var__
 	done
 }
 
-function @_ {
-    [[ $# -ge 2 ]] || return $(errorf)
+function @@ {
+	[[ $# -ge 2 ]] || return $(errorf)
 
-    _var "$1" || return
+	_var "$1" || return
 
-    local _x_var=$1 _x_val=$1 _x_fct=${2%%{*}
+	local _x_var=$1 _x_fct=${2%%{*} && shift
 
-    if is_pipeline "$fct" && "$fct"__: _ -; then
-		eval _x_val=\$$_x_var
-    fi
+	if is_pipeline "$_x_fct" && "$_x_fct"__: -; then
+		local _x_val__ _x_vals=() _x_out=() IFS=$IFS
 
-    @__ $_x_var "$_x_val" "${@:2}"
+		eval _x_vals='("${'$_x_var'[@]}")'
+
+		for _x_val__ in "${_x_vals[@]}"; do
+			@__ _x_val__ "$_x_val__" "$@"
+
+			_x_out+=("$_x_val__")
+		done
+
+		IFS=$'\n'
+
+		echo "${_x_out[*]}"
+	else
+		@ $_x_var "$@"
+	fi
 }
 
 function @ {
-    local _x_var_
+	local _x_var__
 
-    @__ _x_var_ "$@"
+	@__ _x_var__ "$@"
 
-    echo "${_x_var_[*]}"
+	local IFS=$'\n'
+
+	echo "${_x_var__[*]}"
+}
+
+function @_ {
+	[[ $# -ge 2 ]] || return $(errorf)
+
+	_var "$1" || return
+
+	local _x_var=$1 _x_val__=$1 _x_fct=${2%%{*} && shift
+
+	if is_pipeline "$_x_fct" && "$_x_fct"__: _ -; then
+		local _x_vals=() _x_out=()
+
+		eval _x_vals='("${'$_x_var'[@]}")'
+
+		for _x_val__ in "${_x_vals[@]}"; do
+			@__ _x_val__ "$_x_val__" "$@"
+
+			_x_out+=("$_x_val__")
+		done
+
+		eval $_x_var='("${_x_out[@]}")'
+	else
+		@__ $_x_var "$_x_val__" "$@"
+	fi
+}
+
+function @__ {
+	[[ $# -ge 3 ]] || return $(errorf)
+
+	local _x_var=$1 _x_val=$2 && shift 2
+
+	local _x_i _x_spec _x_fct _x_flen _x_plen _x_char _x_depth _x_arg _x_args=() _x_pipe=()
+
+	while [[ ${#@} -gt 0 ]]; do
+		_x_spec=$1 && shift
+
+		_x_fct=${_x_spec%%{*}
+
+		is_pipeline "$_x_fct" || return $(errorf "Function not a pipeline: $_x_fct")
+
+		_x_spec=${_x_spec:${#_x_fct}} _x_arg= _x_args=()
+
+		if [[ $_x_spec ]]; then
+			_x_spec=${_x_spec:1} _x_char=
+
+			while [[ $_x_spec ]]; do
+				_x_char=${_x_spec:0:1}
+				_x_spec=${_x_spec:1}
+
+				[[ $_x_char == } ]] && break
+
+				[[ $_x_char == , ]] && _x_args+=("$_x_arg") _x_arg= && continue
+
+				[[ $_x_char != \{ || $_x_arg ]] && _x_arg+=$_x_char && continue
+
+				if [[ $_x_spec ]]; then
+					_x_depth=1
+					for ((_x_i=0; _x_i<0; _x_i++)); do
+						:
+					done
+				else
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing opened isolated argument of function: $_x_fct ${_x_args[@]} $_x_arg")
+
+					_x_arg+=$1 && shift
+
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing closing argument for isolated argument of function: $_x_fct ${_x_args[@]} $_x_arg")
+
+					[[ $1 == }* ]] || return $(errorf "Missing closing brace for isolated argument of function: $_x_fct ${_x_args[@]} $_x_arg")
+
+					_x_spec=${1:1} && shift
+				fi
+			done
+
+			[[ $_x_char == } ]] || return $(errorf "Missing closing brace for arguments of function: $_x_fct ${_x_args[@]} $_x_arg")
+
+			[[ $_x_spec ]] && return $(errorf "Unexpected content '$_x_spec' after arguments of function: $_x_fct ${_x_args[@]} $_x_arg")
+		fi
+
+		_x_pipe+=("$_x_fct" ${#_x_args[@]} "${_x_args[@]}")
+	done
+
+	_x_plen=${#_x_pipe[@]}
+	while [[ ${#_x_pipe[@]} -gt 0 ]]; do
+		_x_fct=${_x_pipe[0]}
+		_x_flen=${_x_pipe[1]}
+
+		_x_args=("$_x_fct"_ $_x_var)
+
+		[[ $_x_plen && ${#_x_pipe[@]} -eq $_x_plen ]] && \
+			_x_args[0]+=_ _x_args+=("$_x_val") _x_plen=
+
+		[[ $_x_flen -gt 0 ]] && \
+			_x_args+=("${_x_pipe[@]:2:_x_flen}")
+
+		"${_x_args[@]}"
+
+		_x_pipe=("${_x_pipe[@]:2+_x_flen}")
+	done
 }
 
 function exit_hook {
@@ -1480,6 +1566,8 @@ __functions() {
 				local _x_var_='"$out_ini"'
 
 				'"$fct"' _x_var_ "$@"
+
+				local IFS=$'\''\n'\''
 
 				echo "'"$out_val"'"
 			}
