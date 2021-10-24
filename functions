@@ -32,7 +32,7 @@ function errorf {
 
 	_caller
 
-	! ( error "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@" )
+	! ( error "{$CALLER_SOURCE@$CALLER_LINENO#$CALLER_FUNCNAME}" "$@" )
 
 	_caller_
 
@@ -44,7 +44,7 @@ function warnf {
 
 	_caller
 
-	warn "$CALLER_SOURCE[$CALLER_LINENO] $CALLER_FUNCNAME:" "$@"
+	warn "{$CALLER_SOURCE@$CALLER_LINENO#$CALLER_FUNCNAME}" "$@"
 
 	_caller_
 }
@@ -365,7 +365,7 @@ function log {
 	if bool "$LOG_SOURCE" || [[ ! $LOG_SOURCE && $log_level -ge 5 ]]; then
 		_caller
 
-		prefix_args+=("$CALLER_SOURCE:$CALLER_LINENO")
+		prefix_args+=("{$CALLER_SOURCE@$CALLER_LINENO}")
 
 		_caller_
 	fi
@@ -383,7 +383,6 @@ function log {
 
 	if [[ $header ]]; then
 		prefix_args+=(@$header_color@ "$header")
-		#TODO bad sep for pipeline functions
 		prefix_args+=(@$sep_color ':')
 	fi
 
