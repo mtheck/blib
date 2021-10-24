@@ -242,7 +242,7 @@ function echoc {
 	fi
 
 	if [[ $ECHOC_BASE ]] && colorc "$ECHOC_BASE"; then
-		base="$COLORC"
+		base=$COLORC
 	fi
 
 	local out space spec
@@ -250,9 +250,9 @@ function echoc {
 	while [[ $# -gt 0 ]]; do
 		spec=${1#@}
 
-		if [[ ${1:0:1} == @ ]] && colorc "${spec%@}"; then
-			code="$COLORC"
-			[[ ${1: -1} == @ ]] && space=_ || space=
+		if [[ ${1:0:1} == @ ]] && [[ ! ${spec%@} ]] || colorc "${spec%@}"; then
+			[[ ${spec%@} ]] && code=$COLORC || code=$base
+			[[ $spec == *@ ]] && space=_ || space=
 		else
 			if [[ ! $out ]]; then
 				[[ $base && $color ]] && out+=$base
