@@ -1550,12 +1550,6 @@ function @: {
 }
 
 function _caller {
-	#TODO check for more significant caller on command line invocation
-	# echo "### COMM: $BASH_COMMAND" >&2
-	# echo "### SRCS: ${BASH_SOURCE[*]}" >&2
-	# echo "### FUNC: ${FUNCNAME[*]}" >&2
-	# echo "### LINE: ${BASH_LINENO[*]}" >&2
-	# exit
 	local source depth len=${#FUNCNAME[@]}
 
 	for ((depth=2; depth<len; depth++)); do
@@ -1563,6 +1557,8 @@ function _caller {
 
 		[[ $source != "$__functions" ]] && break
 	done
+
+	[[ $depth -lt $len ]] || source=$0
 
 	[[ $CALLER_SOURCE_ ]] && CALLER_SOURCE=$CALLER_SOURCE_ || \
 		CALLER_SOURCE=$source
