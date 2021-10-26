@@ -135,16 +135,16 @@ function bool {
 	[[ $# -eq 1 ]] || return $(errorf)
 
 	case $1 in
+	1 | \
 	true | TRUE | True | \
 	yes | YES | Yes | \
-	on | ON | On | \
-	1)
+	on | ON | On)
 	return 0
 	;;
+	0 | \
 	false | FALSE | False | \
 	no | NO | No | \
-	off | OFF | Off | \
-	0)
+	off | OFF | Off)
 	return 1
 	;;
 	esac
@@ -853,7 +853,7 @@ function filter:[@@] {
 function map:[@@] {
 	[[ $# -ge 3 ]] || return $(errorf)
 
-	local _x_var=$1 _x_arr=$2 _x_exec=$3 && _var "$1" && _var "$2" && shift 2 || return
+	local _x_var=$1 _x_arr=$2 _x_exec=$3 && _var "$1" && _var "$2" && shift 3 || return
 
 	if _debug; then
 		is_array "$_x_var" || [[ $? -eq 1 ]] || warnf "Output variable is not an array"
@@ -1411,12 +1411,13 @@ function @:: {
 	__=@ @: "$1" "$@"
 }
 
+#TODO make array output create a level of slice and array input eat a slice level; use @[:]+ arg to flatten array level(s)
 function @: {
 	[[ $# -ge 3 ]] || return $(errorf)
 
 	local _x_var=$1 _x_vals=($2) && _var "$1" && shift 2 || return
 
-	local __=$__ _x_out__=() _x_in__=() _x_elems=() _x_val _x_spec _x_fct _x_len _x_depth _x_char _x_arg _x_args=() _x_pipe=() _x_errexit _x_rc _x_funcname=$CALLER_FUNCNAME_
+	local __=$__ _x_out__=() _x_in__=() _x_elems=() _x_val _x_spec _x_fct _x_len _x_depth _x_char _x_delim _x_arg _x_args=() _x_pipe=() _x_errexit _x_rc _x_funcname=$CALLER_FUNCNAME_
 
 	[[ ! $__ || ${BASH_SOURCE[1]} != "$__functions" ]] && __=_
 
@@ -1436,11 +1437,15 @@ function @: {
 				_x_char=${_x_spec:0:1}
 				_x_spec=${_x_spec:1}
 
-				[[ $_x_char == ] ]] && break
+				[[ $_x_char == \] ]] && break
 
 				[[ $_x_char == , ]] && _x_args+=("$_x_arg") _x_arg= && continue
 
 				[[ $_x_char != \[ || $_x_arg ]] && _x_arg+=$_x_char && continue
+
+				[[ $_x_spec ]] && _x_delim=${_x_spec:0:1} _x_spec=${_x_spec:1} || _x_delim=\[
+
+				[[ $_x_delim == \[ ]] && _x_delim=\]
 
 				if [[ $_x_spec ]]; then
 					_x_depth=1
@@ -1449,34 +1454,36 @@ function @: {
 						_x_char=${_x_spec:0:1}
 						_x_spec=${_x_spec:1}
 
-						if [[ $_x_char == ] ]]; then
-							((_x_depth--))
-
-							[[ $_x_depth -eq 0 ]] && break
+						if [[ $_x_char == "$_x_delim" ]]; then
+							((--_x_depth)) || break
+						elif [[ $_x_delim == \] && $_x_char == \[ ]]; then
+ 							((++_x_depth))
 						fi
 
 						_x_arg+=$_x_char
 					done
 
-					[[ $_x_depth -eq 0 ]] || return $(errorf "Missing closing bracket for opened enclosed argument of function: $_x_fct${_x_args[@]} $_x_arg")
+					[[ $_x_depth -eq 0 ]] || return $(errorf "Missing closing delimiter '$_x_delim' for opened enclosed argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
-					[[ $_x_spec && $_x_spec != [,\]]* ]] && return $(errorf "Unexpected content '${_x_spec%%[,\]]*}' after enclosed argument of function: $_x_fct${_x_args[@]} $_x_arg")
+					[[ $_x_spec ]] || return $(errorf "Missing content after enclosed argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
+
+					[[ $_x_spec == [,\]]* ]] || return $(errorf "Unexpected content '${_x_spec%%[,\]]*}' after enclosed argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
 				else
-					[[ ${#@} -gt 0 ]] || return $(errorf "Missing opened isolated argument of function: $_x_fct${_x_args[@]} $_x_arg")
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing opened isolated argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
 					_x_arg+=$1 && shift
 
-					[[ ${#@} -gt 0 ]] || return $(errorf "Missing closing argument for isolated argument of function: $_x_fct${_x_args[@]} $_x_arg")
+					[[ ${#@} -gt 0 ]] || return $(errorf "Missing closing argument for isolated argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
-					[[ $1 == ]* ]] || return $(errorf "Missing closing bracket for isolated argument of function: $_x_fct${_x_args[@]} $_x_arg")
+					[[ $1 == "$_x_delim"* ]] || return $(errorf "Missing closing delimiter '$_x_delim' for isolated argument of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
 					_x_spec=${1:1} && shift
 				fi
 			done
 
-			[[ $_x_char == ] ]] || return $(errorf "Missing closing bracket for arguments of function: $_x_fct${_x_args[@]} $_x_arg")
+			[[ $_x_char == \] ]] || return $(errorf "Missing closing bracket for arguments of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
-			[[ $_x_spec ]] && return $(errorf "Unexpected content '$_x_spec' after arguments of function: $_x_fct${_x_args[@]} $_x_arg")
+			[[ $_x_spec ]] && return $(errorf "Unexpected content '$_x_spec' after arguments of function:" $_x_fct ${_x_args[@]} $_x_arg)
 
 			[[ $_x_arg ]] && _x_args+=("$_x_arg")
 		fi
