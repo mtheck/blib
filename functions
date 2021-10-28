@@ -1445,18 +1445,16 @@ function @: {
 
 				[[ $_x_spec ]] && _x_delim=${_x_spec:0:1} _x_spec=${_x_spec:1} || _x_delim=\[
 
-				[[ $_x_delim == \[ ]] && _x_delim=\]
+				[[ $_x_delim == \[ ]] && _x_delim=\] && _x_depth=1 || _x_depth=
 
 				if [[ $_x_spec ]]; then
-					_x_depth=1
-
 					while [[ $_x_spec ]]; do
 						_x_char=${_x_spec:0:1}
 						_x_spec=${_x_spec:1}
 
 						if [[ $_x_char == "$_x_delim" ]]; then
-							((--_x_depth)) || break
-						elif [[ $_x_delim == \] && $_x_char == \[ ]]; then
+							[[ $_x_depth ]] && ((--_x_depth)) || break
+						elif [[ $_x_depth && $_x_delim == \] && $_x_char == \[ ]]; then
  							((++_x_depth))
 						fi
 
