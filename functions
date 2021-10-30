@@ -1270,15 +1270,13 @@ function _run_exit_ {
 }
 
 function coproc_run {
-	[[ $# -gt 1 ]] || return $(errorf)
-
-	local name=$1 && shift
-
-	valid_name "$name" || return $(errorf "Invalid coprocess name")
+	[[ $# -gt 1 && $1 ]] || return $(errorf)
 
 	declare -g -A _coproc
 
-	[[ ${_coproc[$name]} ]] && return
+	[[ ${_coproc[$1]} ]] && return
+
+	local name=$1 && shift && valid_name "$name" || return $(errorf "Invalid coprocess name")
 
 	set -m
 
@@ -1294,17 +1292,13 @@ function coproc_run {
 }
 
 function coproc_kill {
-	[[ $# -eq 1 ]] || return $(errorf)
+	[[ $# -eq 1 && $1 ]] || return $(errorf)
 
-	local name=$1
-
-	valid_name "$name" || return $(errorf "Invalid coprocess name")
-
-	local pid=${_coproc[$name]}	
+	local pid=${_coproc[$1]}
 
 	[[ $pid ]] || return $(errorf "Unknown coprocess")
 
-	unset -v _coproc[$name] _coproc[$name:0] _coproc[$name:1]
+	unset -v _coproc[$1] _coproc[$1:0] _coproc[$1:1]
 
 	kill_job $pid
 }
@@ -1650,11 +1644,11 @@ __functions() {
 			function '"$name"':: {
 				[[ $# -gt 0 ]] || return $(errorf)
 
-				local _x_var_=$1 _x_val_='"$in_ini"' && _var "$1" || return
+				local _x_var_=$1 _x_val_='"$in_ini"' && _var "$1" && shift || return
 
 				eval _x_val_='"$in_set"'
 
-				'"$fct"' $_x_var_ "'"$in_val"'" "${@:2}"
+				'"$fct"' $_x_var_ "'"$in_val"'" "$@"
 			}
 
 			function '"$name"' {
