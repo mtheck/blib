@@ -212,7 +212,8 @@ function colorc {
 			num=${sc[${fmt:i:1}]}
 
 			if [[ $num ]]; then
-				code+=\;$num
+				[[ $code ]] && code+=\;
+				code+=$num
 			else
 				code=
 				break 2
@@ -233,7 +234,7 @@ function echoc {
 	local nl
 	[[ $1 == -n ]] && nl=$1 && shift
 
-	local color base code sep=' '
+	local color base code
 
 	if [[ $ECHOC ]]; then
 		bool $ECHOC && color=_
@@ -250,14 +251,17 @@ function echoc {
 	while [[ $# -gt 0 ]]; do
 		spec=${1#@}
 
-		if [[ ${1:0:1} == @ ]] && [[ ! ${spec%@} ]] || colorc "${spec%@}"; then
-			[[ ${spec%@} ]] && code=$COLORC || code=$base
+		if [[ ${1:0:1} == @ ]] && { [[ ! ${spec%@} ]] || colorc "${spec%@}"; }; then
+			[[ ${spec%@} ]] && code=$COLORC
 			[[ $spec == *@ ]] && space=_ || space=
 		else
 			if [[ ! $out ]]; then
-				[[ $base && $color ]] && out+=$base
+				if [[ $color ]]; then
+					out+=$'\e'[0m
+					[[ $base ]] && out+=$base
+				fi
 			else
-				[[ $space ]] && out+=$sep
+				[[ $space ]] && out+=' '
 			fi
 
 			if [[ $code ]]; then
@@ -280,7 +284,7 @@ function echoc {
 		shift
 	done
 
-	[[ $base && $color ]] && out+=$'\e'[0m
+	[[ $color ]] && out+=$'\e'[0m
 
 	echo $nl "$out"
 }
@@ -294,7 +298,7 @@ function log {
 
 	[[ $# -ge 1 ]] || return $(errorf)
 
-	local level=$1 && shift
+	local level=$1 test drop && shift
 
 	valid_int "$level" || return $(errorf "Invalid log level")
 
@@ -306,8 +310,6 @@ function log {
 		DEBUG:
 		TRACE:
 	)
-
-	local test drop
 
 	if [[ $level == -* ]] ; then
 		test=_
@@ -332,7 +334,7 @@ function log {
 	fi
 	[[ $drop ]] && return 0
 
-	local log_prefix_opt log_prefix=$LOG_PREFIX
+	local log_prefix_opt log_prefix=$LOG_PREFIX prefix prefix_args=()
 
 	if [[ $log_prefix == [+-]* ]]; then
 		log_prefix_opt=${log_prefix:0:1}
@@ -344,9 +346,7 @@ function log {
 		log_prefix='>>>'
 	fi
 
-	local prefix=$log_prefix prefix_args=()
-
-	[[ -t 2 && $log_prefix_opt != + ]] && prefix=
+	[[ -t 2 && $log_prefix_opt != + ]] || prefix=$log_prefix
 
 	[[ $log_level -ge 4 && $log_prefix_opt != - ]] && prefix=$log_prefix
 
@@ -388,7 +388,7 @@ function log {
 
 	[[ ${#prefix_args[@]} -gt 0 ]] && prefix_args+=('')
 
-	echoe -n "${prefix_args[@]}"
+	ECHOC_BASE=none echoe -n "${prefix_args[@]}"
 	ECHOC_BASE=$color echoe "$@"
 }
 
@@ -552,7 +552,9 @@ function quote:[--] {
 
 	_var "$1" || return
 
-	eval $1="'${2//\'/\'\\\'\'}'"
+	local _x_str="'${2//\'/\'\\\'\'}'"
+
+	eval $1=\$_x_str
 }
 
 function jquote:[--] {
@@ -560,7 +562,9 @@ function jquote:[--] {
 
 	local _x_str=${2//\\/\\\\} && _var "$1" || return
 
-	eval $1="\"${_x_str//\"/\\\"}\""
+	_x_str="\"${_x_str//\"/\\\"}\""
+
+	eval $1=\$_x_str
 }
 
 function pad:[--] {
@@ -572,21 +576,16 @@ function pad:[--] {
 
 	[[ $_x_pad ]] || _x_pad=' '
 
-	local _x_add_len _x_pad_len=${#_x_pad} _x_todo_len=$(($_x_len-${#_x_str}))
+	local _x_pad_c _x_pad_len=${#_x_pad} _x_add_len=$((_x_len-${#_x_str}))
 
-	while [[ $_x_todo_len -gt 0 ]]; do
-		if [[ $_x_pad_len -lt $_x_todo_len ]]; then
-			_x_add_len=$_x_pad_len
-		else
-			_x_add_len=$_x_todo_len
-		fi
+	if [[ $_x_add_len -gt 0 ]]; then
+		for ((_x_pad_c=$((_x_add_len/_x_pad_len)); _x_pad_c>0; _x_pad_c--)); do
+			_x_str+=$_x_pad
+		done
+		_x_add_len=$((_x_len-${#_x_str})) && [[ $_x_add_len -gt 0 ]] && _x_str+=${_x_pad:0:_x_add_len}
+	fi
 
-		_x_str+=${_x_pad:0:_x_todo_len}
-
-		_x_todo_len=$((_x_todo_len-_x_add_len))
-	done
-
-	eval $1="$_x_str"
+	eval $1=\$_x_str
 }
 
 function trim:[--] {
@@ -628,7 +627,7 @@ function _trim {
 		fi
 	fi
 
-	eval $_x_var="$_x_str"
+	eval $_x_var=\$_x_str
 }
 
 function upper:[--] {
@@ -636,7 +635,9 @@ function upper:[--] {
 
 	_var "$1" || return
 
-	eval $1="${2^^}"
+	local _x_str=${2^^}
+
+	eval $1=\$_x_str
 }
 
 function lower:[--] {
@@ -644,7 +645,9 @@ function lower:[--] {
 
 	_var "$1" || return
 
-	eval $1="${2,,}"
+	local _x_str=${2,,}
+
+	eval $1=\$_x_str
 }
 
 function upperf:[--] {
@@ -652,7 +655,9 @@ function upperf:[--] {
 
 	_var "$1" || return
 
-	eval $1="${2^}"
+	local _x_str=${2^}
+
+	eval $1=\$_x_str
 }
 
 function lowerf:[--] {
@@ -660,7 +665,9 @@ function lowerf:[--] {
 
 	_var "$1" || return
 
-	eval $1="${2,}"
+	local _x_str=${2,}
+
+	eval $1=\$_x_str
 }
 
 function file_dir:[--] {
@@ -688,7 +695,7 @@ function file_dir:[--] {
 
 	[[ $_x_file ]] || _x_file=.
 
-	eval $1="$_x_file"
+	eval $1=\$_x_file
 }
 
 function file_name:[--] {
@@ -710,7 +717,7 @@ function file_name:[--] {
 		_x_file=$_x_root
 	fi
 
-	eval $1="$_x_file"
+	eval $1=\$_x_file
 }
 
 function file_base:[--] {
@@ -720,7 +727,9 @@ function file_base:[--] {
 
 	file_name: _x_file_ "$_x_file_"
 
-	eval $1="${_x_file_%.*}"
+	_x_file_=${_x_file_%.*}
+
+	eval $1=\$_x_file_
 }
 
 function file_ext:[--] {
@@ -730,7 +739,9 @@ function file_ext:[--] {
 
 	file_name: _x_file_ "$_x_file_"
 
-	eval $1="${_x_file_##*.}"
+	_x_file_=${_x_file_##*.}
+
+	eval $1=\$_x_file_
 }
 
 function duration:[--] {
@@ -900,11 +911,13 @@ function map:[@@] {
 }
 
 function sep:[@-] {
-	[[ $# -ge 3 && $# -le 5 ]] || return $(errorf)
+	[[ $# -ge 2 && $# -le 5 ]] || return $(errorf)
 
 	local _x_str=$2 _x_regex=$3 _x_limit=0 _x_keep= && _var "$1" || return
 
 	! _debug || is_array "$1" || [[ $? -eq 1 ]] || warnf "Output variable is not an array"
+
+	[[ $# -lt 3 ]] && _x_regex=\\s+
 
 	if [[ $# -ge 4 ]]; then
 		_x_limit=$4
@@ -1405,13 +1418,13 @@ function @:: {
 	__=@ @: "$1" "$@"
 }
 
-#TODO make array output create a level of slice and array input eat a slice level; use @[:]+ arg to flatten array level(s)
+#TODO make array output create a level of slice and array input eat a slice level; use [-]@[+] arg to flatten array level(s)
 function @: {
 	[[ $# -ge 3 ]] || return $(errorf)
 
 	local _x_var=$1 _x_vals=($2) && _var "$1" && shift 2 || return
 
-	local __=$__ _x_out__=() _x_in__=() _x_elems=() _x_val _x_spec _x_fct _x_len _x_depth _x_char _x_delim _x_arg _x_args=() _x_pipe=() _x_errexit _x_rc _x_funcname=$CALLER_FUNCNAME_
+	local __=$__ _x_out__=() _x_in__=() _x_elems=() _x_sls=() _x_sls_x=() _x_vals_x=() _x_val _x_i _x_l _x_pos _x_len _x_size _x_depth _x_sld _x_sll _x_spec _x_fct _x_char _x_delim _x_arg _x_args=() _x_pipe=() _x_errexit _x_rc _x_funcname=$CALLER_FUNCNAME_
 
 	[[ ! $__ || ${BASH_SOURCE[1]} != "$__functions" ]] && __=_
 
@@ -1485,54 +1498,94 @@ function @: {
 
 	shopt -qo errexit && _x_errexit=_
 
+	if "$_x_fct":__ _ @ || [[ $__ == @ ]]; then
+		_var "$_x_vals" || return
+
+		eval _x_vals='("${'$_x_vals'[@]}")'
+	fi
+
+	_x_depth=1 _x_sls=(-1 ${#_x_vals[@]})
+
 	while [[ ${#_x_pipe[@]} -gt 0 ]]; do
 		_x_fct=${_x_pipe[0]}
 		_x_len=${_x_pipe[1]}
 		_x_args=("${_x_pipe[@]:2:_x_len}")
+		_x_pipe=("${_x_pipe[@]:2+_x_len}")
 
-		if "$_x_fct":__ _ -; then
-			if [[ $__ == @ ]]; then
-				_var "$_x_vals" || return
+		"$_x_fct":__ @ - && _x_sld=$((_x_depth+1)) || _x_sld=
 
-				eval _x_vals='("${'$_x_vals'[@]}")'
+		_x_pos=0 _x_l=${#_x_sls[@]}
+
+		for ((_x_i=0; _x_i<_x_l; _x_i++)); do
+			_x_len=${_x_sls[_x_i]}
+
+			if [[ $_x_len -lt 0 ]]; then
+				[[ -$_x_len -lt $_x_depth ]] && _x_sls_x+=($_x_len) && continue
+				[[ -$_x_len -gt $_x_depth ]] || continue
+
+				_x_len=0
+
+				while :; do
+					_x_sll=${_x_sls[_x_i+1]}
+
+					if [[ $_x_sll -lt 0 ]]; then
+						[[ -$_x_sll -gt $_x_depth ]] || break
+					else
+						_x_len=$((_x_len+_x_sll))
+					fi
+
+					((++_x_i))
+
+					[[ $_x_i -ge $_x_l ]] && ((_x_i--)) && break
+				done
 			fi
 
-			_x_elems=("${_x_vals[@]}")
-		else
-			if [[ $__ == - ]]; then
-				_x_in__=("$_x_vals")
-			elif [[ $__ ]]; then
-				_var "$_x_vals" || return
+			_x_sls_x+=(-$_x_depth)
 
-				eval _x_in__='("${'$_x_vals'[@]}")'
+			if "$_x_fct":__ _ -; then
+				_x_elems=("${_x_vals[@]:_x_pos:_x_len}")
 			else
-				_x_in__=("${_x_vals[@]}")
+				_x_in__=("${_x_vals[@]:_x_pos:_x_len}")
+				_x_elems=(_x_in__)
 			fi
 
-			_x_elems=(_x_in__)
-		fi
+			_x_size=${#_x_vals_x[@]}
 
-		__= _x_vals=()
+			[[ $_x_sld ]] && _x_sls_x+=(-$_x_sld)
 
-		for _x_val in "${_x_elems[@]}"; do
-			[[ $_x_funcname ]] || CALLER_FUNCNAME_=$_x_fct
+			for _x_val in "${_x_elems[@]}"; do
+				[[ $_x_funcname ]] || CALLER_FUNCNAME_=$_x_fct
 
-			[[ $_x_errexit ]] && set +e
+				[[ $_x_errexit ]] && set +e
 
-			"$_x_fct": _x_out__ "$_x_val" "${_x_args[@]}"
+				"$_x_fct": _x_out__ "$_x_val" "${_x_args[@]}"
 
-			_x_rc=$?
+				_x_rc=$?
 
-			[[ $_x_errexit ]] && set -e
+				[[ $_x_errexit ]] && set -e
 
-			[[ $_x_funcname ]] || unset -v CALLER_FUNCNAME_
+				[[ $_x_funcname ]] || unset -v CALLER_FUNCNAME_
 
-			[[ $_x_errexit && $_x_rc -ne 0 ]] && return $_x_rc
+				[[ $_x_errexit && $_x_rc -ne 0 ]] && return $_x_rc
 
-			_x_vals+=("${_x_out__[@]}") _x_out__=()
+				_x_vals_x+=("${_x_out__[@]}") _x_out__=()
+
+				[[ $_x_sld ]] && _x_sls_x+=($((${#_x_vals_x[@]}-_x_size))) && _x_size=${#_x_vals_x[@]}
+			done
+
+			[[ $_x_sld ]] || _x_sls_x+=($((${#_x_vals_x[@]}-_x_size)))
+
+			_x_pos=$((_x_pos+_x_len))
 		done
 
-		_x_pipe=("${_x_pipe[@]:2+_x_len}")
+		_x_sls=("${_x_sls_x[@]}") _x_sls_x=()
+		_x_vals=("${_x_vals_x[@]}") _x_vals_x=()
+
+		if [[ $_x_sld ]]; then
+			_x_depth=$_x_sld
+		elif "$_x_fct":__ - @; then
+			((_x_depth--))
+		fi
 	done
 
 	if [[ ${#_x_vals[@]} -ne 1 ]]; then
@@ -1587,9 +1640,9 @@ __functions() {
 	while read -r -a args; do
 		fct=${args[-1]}
 
-		[[ $fct =~ [^:]:\[[-@]+\]$ ]] || continue
+		[[ $fct =~ ^([^\]\[]*[^:]):\[(.*)\]$ ]] || continue
 
-		name=${fct:0:-${#BASH_REMATCH}+1} proto=${BASH_REMATCH:3:-1}
+		name=${BASH_REMATCH[1]} proto=${BASH_REMATCH[2]}
 
 		case ${proto:0:1} in
 		-)
@@ -1601,7 +1654,9 @@ __functions() {
 			out_val=\${_x_var_[*]}
 			;;
 		*)
-			continue ;;
+			_debug && warn "Invalid function prototype output argument: $fct"
+			continue
+			;;
 		esac
 		case ${proto:1:1} in
 		-)
@@ -1615,8 +1670,10 @@ __functions() {
 			in_val=_x_val_
 			;;
 		*)
-			continue ;;
+			_debug && warn "Invalid function prototype input argument: $fct" ;;
 		esac
+
+		_debug && [[ ${#proto} -gt 2 ]] && warn "Invalid function prototype arguments: $fct"
 
 		eval '
 			function '"$name"':__ {
