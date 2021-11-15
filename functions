@@ -547,6 +547,80 @@ function count:[-@] {
 	eval $1=\${#$2[@]}
 }
 
+function total:[-@] {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	local _x_var=$1 _x_arr=$2 && _var "$1" && _var "$2" || return
+
+	! _debug || is_array "$_x_arr" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	local _x_total=0 _x_val _x_vals=()
+
+	eval _x_vals='("${'$_x_arr'[@]}")' && [[ ${#_x_vals[@]} -gt 0 ]] || return $(errorf "Array is empty")
+
+	for _x_val in "${_x_vals[@]}"; do
+		_x_total=$((_x_total+_x_val))
+	done
+
+	eval $_x_var=\$_x_total
+}
+
+function min:[-@] {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	local _x_var=$1 _x_arr=$2 && _var "$1" && _var "$2" || return
+
+	! _debug || is_array "$_x_arr" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	local _x_min _x_val _x_vals=()
+
+	eval _x_vals='("${'$_x_arr'[@]}")' && [[ ${#_x_vals[@]} -gt 0 ]] || return $(errorf "Array is empty")
+
+	for _x_val in "${_x_vals[@]}"; do
+		[[ ! $_x_min || $_x_val -lt $_x_min ]]  && _x_min=$_x_val
+	done
+
+	eval $_x_var=\$_x_min
+}
+
+function max:[-@] {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	local _x_var=$1 _x_arr=$2 && _var "$1" && _var "$2" || return
+
+	! _debug || is_array "$_x_arr" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	local _x_max _x_val _x_vals=()
+
+	eval _x_vals='("${'$_x_arr'[@]}")' && [[ ${#_x_vals[@]} -gt 0 ]] || return $(errorf "Array is empty")
+
+	for _x_val in "${_x_vals[@]}"; do
+		[[ ! $_x_max || $_x_val -gt $_x_max ]]  && _x_max=$_x_val
+	done
+
+	eval $_x_var=\$_x_max
+}
+
+function avg:[-@] {
+	[[ $# -eq 2 ]] || return $(errorf)
+
+	local _x_var=$1 _x_arr=$2 && _var "$1" && _var "$2" || return
+
+	! _debug || is_array "$_x_arr" || [[ $? -eq 1 ]] || warnf "Variable is not an array"
+
+	local _x_avg=0 _x_val _x_vals=()
+
+	eval _x_vals='("${'$_x_arr'[@]}")' && [[ ${#_x_vals[@]} -gt 0 ]] || return $(errorf "Array is empty")
+
+	for _x_val in "${_x_vals[@]}"; do
+		_x_avg=$((_x_avg+_x_val))
+	done
+
+	_x_avg=$((_x_avg/${#_x_vals[@]}))
+
+	eval $_x_var=\$_x_avg
+}
+
 function quote:[--] {
 	[[ $# -eq 2 ]] || return $(errorf)
 
