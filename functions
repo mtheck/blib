@@ -765,7 +765,7 @@ function duration:[--] {
 		[[ $_x_num ]] || return 1
 
 		_x_duration=${_x_duration:${#_x_num}}
-		_x_unit=${_x_duration%%[0-9]*}
+		_x_unit=${_x_duration%%[[:digit:]]*}
 
 		[[ $_x_unit ]] || _x_unit=s
 
@@ -981,29 +981,36 @@ function tie:[-@] {
 	eval $1=\$_x_out
 }
 
-function struct_new {
-	[[ $# -gt 1 ]] || return $(errorf)
+function map_new {
+	[[ $# -ge 1 ]] || return $(errorf)
 
-	local _x_var=$1 && _var "$1" && shift || return
+	local _x_var=$1 _x_field _x_len && _var "$1" && shift || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	if is_declared $_x_var; then
+		! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
+	else
+		declare -g -A $_x_var
+	fi
 
-	eval _x_len=\${#$_x_var[@]} && [[ $_x_len -eq 0 ]] || return $(errorf "Struct variable must be empty")
+	eval _x_len=\${#$_x_var[@]} && [[ $_x_len -eq 0 ]] || return $(errorf "Map variable must be empty")
 
-	local _x_field
-	for _x_field; do
-		valid_name "$_x_field" || return $(errorf "Illegal field name")
-	done
+	if [[ $# -eq 0 ]]; then
+		set -- -
+	else
+		for _x_field; do
+			valid_name "$_x_field" || return $(errorf "Illegal field name")
+		done
+	fi
 
 	IFS=' ' eval $_x_var[:]='"$*"'
 }
 
-function struct_get {
+function map_get {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
 	local _x_var=$1 _x_key=$2 _x_target=$1 && _var "$1" || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
 
 	[[ $_x_key ]] || return $(errorf "Illegal empty key")
 
@@ -1015,26 +1022,64 @@ function struct_get {
 		! _debug || is_hash "$_x_target" || warnf "Target variable is not an associative array"
 	fi
 
-	local _x_fields _x_field
+	local _x_fields _x_field _x_len _x_sets
 
 	eval _x_fields=\${$_x_var[:]}
 
-	for _x_field in $_x_fields; do
-		eval $_x_target[$_x_field]=\${$_x_var[\$_x_key:$_x_field]}
-	done
+	[[ $_x_fields ]] || return $(errorf "Map variable invalid")
+
+	if [[ $_x_fields == - ]]; then
+		eval _x_len=\${$_x_var[\$_x_key:]}
+
+		_x_sets=()
+
+		if [[ $_x_len ]]; then
+			for ((_x_field=0; _x_field<_x_len; _x_field++)); do
+				_x_sets+=($_x_target[$_x_field]=\${$_x_var[\$_x_key:$_x_field]})
+			done
+		else
+			_x_len=0
+		fi
+
+		eval _x_fields='("${!'$_x_target'[@]}")' "${_x_sets[@]}"
+
+		_x_sets=()
+
+		for _x_field in "${_x_fields[@]}"; do
+			[[ $_x_field == *[![:digit:]]* ]] && continue
+
+			_x_field=$((_x_field+0))
+
+			[[ $_x_field -gt $_x_len ]] || continue
+
+			_x_sets+=($_x_target[$_x_field])
+		done
+
+		if [[ ${#_x_sets[@]} -gt 0 ]]; then
+			eval unset -v "${_x_sets[@]}"
+		fi
+	else
+		_x_sets=()
+
+		for _x_field in $_x_fields; do
+			_x_sets+=($_x_target[$_x_field]=\${$_x_var[\$_x_key:$_x_field]})
+		done
+
+		eval "${_x_sets[@]}"
+	fi
 }
 
-function struct_pop {
-	struct_get "$@"
-	struct_del $1 "$2"
+function map_pop {
+	map_get "$@"
+	map_del $1 "$2"
 }
 
-function struct_set {
+function map_set {
 	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
 
 	local _x_var=$1 _x_key=$2 _x_target=$1 && _var "$1" || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
 
 	[[ $_x_key ]] || return $(errorf "Illegal empty key")
 
@@ -1046,28 +1091,72 @@ function struct_set {
 		! _debug || is_hash "$_x_target" || warnf "Target variable is not an associative array"
 	fi
 
-	local _x_fields _x_field
+	local _x_fields _x_field _x_sets _x_len=_
 
 	eval _x_fields=\${$_x_var[:]}
 
-	for _x_field in $_x_fields; do
-		eval $_x_var[\$_x_key:$_x_field]=\${$_x_target[$_x_field]}
-	done
+	[[ $_x_fields ]] || return $(errorf "Map variable invalid")
 
-	eval $_x_var[\$_x_key:]=_
+	if [[ $_x_fields == - ]]; then
+		_x_len=-1
+
+		eval _x_fields='("${!'$_x_target'[@]}")'
+
+		_x_sets=()
+
+		for _x_field in "${_x_fields[@]}"; do
+			[[ $_x_field == *[![:digit:]]* ]] && continue
+
+			_x_field=$((_x_field+0))
+
+			_x_sets+=($_x_var[\$_x_key:$_x_field]=\${$_x_target[$_x_field]})
+
+			[[ $_x_field -gt $_x_len ]] && _x_len=$_x_field
+		done
+
+		_x_len=$((_x_len+1))
+
+		if [[ ${#_x_sets[@]} -gt 0 ]]; then
+			eval "${_x_sets[@]}"
+		fi
+
+		eval _x_fields=\${$_x_var[\$_x_key:]}
+
+		if [[ $_x_fields ]]; then
+			_x_sets=()
+
+			for ((_x_field=$((_x_fields-1)); _x_field>=_x_len; _x_field--)); do
+				_x_sets+=($_x_var[\$_x_key:$_x_field])
+			done
+
+			if [[ ${#_x_sets[@]} -gt 0 ]]; then
+				eval unset -v "${_x_sets[@]}"
+			fi
+		fi
+	else
+		_x_sets=()
+
+		for _x_field in $_x_fields; do
+			_x_sets+=($_x_var[\$_x_key:$_x_field]=\${$_x_target[$_x_field]})
+		done
+
+		eval "${_x_sets[@]}"
+	fi
+
+	eval $_x_var[\$_x_key:]=$_x_len
 }
 
-function struct_push {
-	struct_set "$@"
-	struct_clear $1 "${@:3}"
+function map_push {
+	map_set "$@"
+	map_clear $1 "${@:3}"
 }
 
-function struct_del {
+function map_del {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	local _x_var=$1 _x_key=$2 && _var "$1" || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
 
 	[[ $_x_key ]] || return $(errorf "Illegal empty key")
 
@@ -1083,12 +1172,12 @@ function struct_del {
 	done
 }
 
-function struct_clear {
+function map_clear {
 	[[ $# -ge 1 && $# -le 2 ]] || return $(errorf)
 
 	local _x_var=$1 _x_target=$1 && _var "$1" || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
 
 	if [[ $# -ge 2 ]]; then
 		_x_target=$2 && _var "$2" || return
@@ -1096,21 +1185,43 @@ function struct_clear {
 		! _debug || is_hash "$_x_target" || warnf "Target variable is not an associative array"
 	fi
 
-	local _x_fields _x_field
+	local _x_fields _x_field _x_sets
 
 	eval _x_fields=\${$_x_var[:]}
 
-	for _x_field in $_x_fields; do
-		eval unset -v $_x_target[$_x_field]
-	done
+	[[ $_x_fields ]] || return $(errorf "Map variable invalid")
+
+	if [[ $_x_fields == - ]]; then
+		eval _x_fields='("${!'$_x_target'[@]}")'
+
+		_x_sets=()
+
+		for _x_field in "${_x_fields[@]}"; do
+			[[ $_x_field == *[![:digit:]]* ]] && continue
+
+			_x_sets+=($_x_target[$_x_field])
+		done
+
+		if [[ ${#_x_sets[@]} -gt 0 ]]; then
+			eval "${_x_sets[@]}"
+		fi
+	else
+		_x_sets=()
+
+		for _x_field in $_x_fields; do
+			_x_sets+=($_x_target[$_x_field])
+		done
+
+		eval unset -v "${_x_sets[@]}"
+	fi
 }
 
-function struct_key {
+function map_key {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	local _x_var=$1 _x_key=$2 _x_found && _var "$1" || return
 
-	! _debug || is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
 
 	[[ $_x_key ]] || return $(errorf "Illegal empty key")
 
@@ -1119,13 +1230,13 @@ function struct_key {
 	[[ $_x_found ]]
 }
 
-function struct_keys {
+function map_keys {
 	[[ $# -eq 2 ]] || return $(errorf)
 
 	local _x_var=$1 _x_target=$2 && _var "$1" && _var "$2" || return
 
 	if _debug; then
-		is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+		is_hash "$_x_var" || warnf "Map variable is not an associative array"
 		is_array "$_x_target" || warnf "Target variable is not an array"
 	fi
 
@@ -1142,17 +1253,51 @@ function struct_keys {
 	eval $_x_target='("${_x_keys[@]}")'
 }
 
-function struct_fields {
+function map_fields {
 	[[ $# -eq 2 ]] || return $(errorf)
 
-	local _x_var=$1 _x_target=$2 && _var "$1" && _var "$2" || return
+	local _x_var=$1 _x_target=$2 _x_fields && _var "$1" && _var "$2" || return
 
 	if _debug; then
-		is_hash "$_x_var" || warnf "Struct variable is not an associative array"
+		is_hash "$_x_var" || warnf "Map variable is not an associative array"
 		is_array "$_x_target" || warnf "Target variable is not an array"
 	fi
 
-	eval $_x_target=\(\${$_x_var[:]}\)
+	eval _x_fields=\${$_x_var[:]}
+
+	[[ $_x_fields ]] || return $(errorf "Map variable invalid")
+
+	[[ $_x_fields == - ]] && return $(errorf "Map variable is unstructured")
+
+	eval $_x_target="($_x_fields)"
+}
+
+function map_len {
+	[[ $# -ge 2 && $# -le 3 ]] || return $(errorf)
+
+	local _x_var=$1 _x_target=$2 _x_key=$3 _x_len _x_keys && _var "$1" && _var "$2" || return
+
+	! _debug || is_hash "$_x_var" || warnf "Map variable is not an associative array"
+
+	if [[ $# -ge 3 ]]; then
+		[[ $_x_key ]] || return $(errorf "Illegal empty key")
+
+		eval _x_len=\${$_x_var[\$_x_key:]}
+
+		[[ $_x_len == _ ]] && return $(errorf "Map variable is structured")
+
+		[[ $_x_len ]] || _x_len=0
+	else
+		_x_len=0
+
+		eval _x_keys='("${!'$_x_var'[@]}")'
+
+		for _x_key in "${_x_keys[@]}"; do
+			[[ $_x_key == *?: ]]  && ((++_x_len))
+		done
+	fi
+
+	eval $_x_target=$_x_len
 }
 
 function tmp_file {
