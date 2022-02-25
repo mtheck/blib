@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+
+set -e
+
+. functions
+
+usage() {
+    cat <<END
+Super grep, output matches captured by (PCRE) regular expression arguments.
+
+Usage:
+    $0 [options] <regex> ...
+
+Options:
+  --whole, -w
+    Match whole input
+  --global, -g
+    Enable global (multiple) matches
+  --multiple-lines, -m
+    Enable multiple lines match regex modifier (implies --whole)
+  --single-line, -s
+    Enable single line match regex modifier (implies --whole)
+  --separator, -s <STRING>
+    Use specified element separator instead of newlines
+  --help, -h
+    Display this help
+END
+    exit 2
+}
+
+
+whole=
+global=
+multiple=
+single=
+ignore=
+sep=$'\n'
+
+while [[ $# -gt 0 ]]; do
+case $1 in
+--whole | -w)
+    whole=whole
+    shift
+    ;;
+--global | -g)
+    global=global
+    shift
+    ;;
+--multiple-line | -m)
+    multiple=multiple
+    whole=whole
+    shift
+    ;;
+--single-line | -s)
+    single=single
+    whole=whole
+    shift
+    ;;
+--ignore-case | --ignore | -i)
+    ignore=ignore
+    shift
+    ;;
+--separator | -s)
+    sep=$2
+    shift 2 || usage
+    ;;
+--help | -h)
+    usage
+    ;;
+--)
+    shift
+    break
+    ;;
+-*)
+    error "Unknown option: $1"
+    ;;
+*)
+    break
+    ;;
+esac
+done
+
+[[ $# -gt 0 ]] || usage
+
+glob= mod=
+
+[[ $global ]] && glob=g
+[[ $multiple ]] && mod+=m
+[[ $single ]] && mod+=s
+[[ $ignore ]] && mod+=i
+
+tmp_file; err_file=$TMP_FILE
+
+err=
+
+perl -e '
+    $whole = shift;
+    $sep = shift;
+
+    @re = map { eval { qr/$_/'$mod' } or die "Invalid regex: $@" } @ARGV;
+
+    sub gres {
+        for $re (@re) {
+            print $_, $sep for /$re/'$glob';
+        }
+    }
+
+    if ($whole) {
+        undef $/;
+
+        $_ = <STDIN>;
+
+        gres;
+    }
+    else {
+        gres while <STDIN>;
+    }
+
+' "$whole" "$sep" "$@" 2> "$err_file" || err=$?
+
+if [[ $err ]]; then
+    shopt -s extglob
+
+    error=$(< "$err_file")
+
+    error "${error% at * line +([[:digit:]]).}"
+fi
