@@ -5,37 +5,32 @@ set -e
 . functions
 
 function usage {
-    cat <<END
+	cat <<END
 View standard input.
 
 Usage:
-  $0 [<options>]
+  $0 [<options>] [<view option>]
 
 Options:
   --help, -h
     Display this help
 END
-    exit 2
+	exit 2
 }
 
 while [[ $# -gt 0 ]]; do
 case $1 in
 --help | -h)
-    usage
-    ;;
+	usage
+	;;
 --)
-    shift
-    break
-    ;;
--*)
-    error "Unknown option: $1"
-    ;;
+	shift
+	break
+	;;
 *)
-    break
-    ;;
+	break
+	;;
 esac
 done
 
-[[ $# -eq 0 ]] || usage
-
-exec view --not-a-term -
+exec view "$@" --not-a-term -

@@ -13,22 +13,22 @@ decode=
 while [[ $# -gt 0 ]]; do
 case $1 in
 --decode | -d)
-    decode=decode
-    ;;
+	decode=decode
+	;;
 --help | --version)
-    exec base64 $1
-    ;;
+	exec base64 $1
+	;;
 --)
-    shift
-    break
-    ;;
+	shift
+	break
+	;;
 -?*)
-    ;;
+	;;
 *)
-    files+=("$1")
-    shift
-    continue
-    ;;
+	files+=("$1")
+	shift
+	continue
+	;;
 esac
 flags+=("$1")
 shift
@@ -41,7 +41,7 @@ file=${files[-1]}
 files[-1]=-
 
 if [[ $decode ]]; then
-    cat -- "$file" | tr -- "$TR_SET1" "$TR_SET2" | base64 "${flags[@]}" -- "${files[@]}"
+	cat -- "$file" | tr -- "$TR_SET1" "$TR_SET2" | base64 "${flags[@]}" -- "${files[@]}"
 else
-    cat -- "$file" | base64 "${flags[@]}" -- "${files[@]}" | tr -- "$TR_SET1" "$TR_SET2"
+	cat -- "$file" | base64 "${flags[@]}" -- "${files[@]}" | tr -- "$TR_SET1" "$TR_SET2"
 fi

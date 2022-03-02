@@ -5,42 +5,44 @@ set -e
 . functions
 
 function usage {
-    cat <<END
-Remove line feed (dos -> unix) from files.
+	cat <<END
+Remove line feed (dos -> unix) from files or standard input.
 
 Usage:
-  $0 [<options>] <file> ...
+  $0 [<options>] [<file> ...]
 
 Options:
   --help, -h
     Display this help
 END
-    exit 2
+	exit 2
 }
 
 while [[ $# -gt 0 ]]; do
 case $1 in
 --help | -h)
-    usage
-    ;;
+	usage
+	;;
 --)
-    shift
-    break
-    ;;
+	shift
+	break
+	;;
 -*)
-    error "Unknown option: $1"
-    ;;
+	error "Unknown option: $1"
+	;;
 *)
-    break
-    ;;
+	break
+	;;
 esac
 done
 
-[[ $# -gt 0 ]] || usage
+if [[ $# -eq 0 ]]; then
+	tr -d '\r'
+else
+	while [[ $# -gt 0 ]]; do
+		[[ -f $1 ]] || error "Not a file: $1"
 
-while [[ $# -gt 0 ]]; do
-	[[ -f $1 ]] || error "Not a file: $1"
-
-	wap -- "$1" tr -d '\r'
-	shift
-done
+		wap -- "$1" tr -d '\r'
+		shift
+	done
+fi

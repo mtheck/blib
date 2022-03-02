@@ -5,8 +5,8 @@ set -e
 . functions
 
 function usage {
-    cat <<END
-Filter a file through a (successful) command.
+	cat <<END
+Write standard output of a successful command to the same file sent to its standard input.
 
 Usage:
   $0 [<options>] <file> <command> [<arg> ...]
@@ -15,24 +15,24 @@ Options:
   --help, -h
     Display this help
 END
-    exit 2
+	exit 2
 }
 
 while [[ $# -gt 0 ]]; do
 case $1 in
 --help | -h)
-    usage
-    ;;
+	usage
+	;;
 --)
-    shift
-    break
-    ;;
+	shift
+	break
+	;;
 -*)
-    error "Unknown option: $1"
-    ;;
+	error "Unknown option: $1"
+	;;
 *)
-    break
-    ;;
+	break
+	;;
 esac
 done
 

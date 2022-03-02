@@ -5,7 +5,7 @@ set -e
 . functions
 
 function usage {
-    cat <<END
+	cat <<END
 Run a command sending standard output to less using intermediate temporary file.
 
 Usage:
@@ -16,7 +16,7 @@ Options:
     Display this help
   <less options>
 END
-    exit 2
+	exit 2
 }
 
 less_options=()
@@ -24,19 +24,19 @@ less_options=()
 while [[ $# -gt 0 ]]; do
 case $1 in
 --help | -h)
-    usage
-    ;;
+	usage
+	;;
 --)
-    shift
-    break
-    ;;
+	shift
+	break
+	;;
 -*)
-    less_options+=("$1")
-    shift
-    ;;
+	less_options+=("$1")
+	shift
+	;;
 *)
-    break
-    ;;
+	break
+	;;
 esac
 done
 
